@@ -1,0 +1,299 @@
+/* ============================================================================
+   MEMORY PASSPORT — "Ink & Paper" design system
+   ----------------------------------------------------------------------------
+   A portable, non-custodial memory infrastructure. The metaphor: memories are
+   ink stamps in a passport — owned by you, traveling with you.
+
+   B-side console = graphite instrument-panel. C-side embedded = warm paper.
+   Accent = "passport ink" (deep indigo-blue). Hue is reserved for status/data
+   and the ink accent; chrome is monochrome neutral. Borders over shadows.
+
+   Stack: Tailwind CSS v4 + shadcn/ui (new-york) on Radix. Geist + Geist Mono.
+   ============================================================================ */
+
+@import "tailwindcss";
+
+/* ---- Dark mode driven by next-themes (class strategy) ------------------- */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================================
+   1. PRIMITIVES — raw ramps
+   ============================================================================ */
+:root {
+  /* Neutral chrome ramp (Tailwind v4 neutral) */
+  --base-white: #ffffff;
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a3a3a3;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-900: #171717;
+  --neutral-950: #0a0a0a;
+
+  /* Ink — the Memory Passport accent ("passport ink") */
+  --ink-50: #eff4ff;
+  --ink-100: #dbe5fe;
+  --ink-200: #bdd0fe;
+  --ink-300: #90b0fd;
+  --ink-400: #6088fa;
+  --ink-500: #3b66f6;
+  --ink-600: #1E3A8A; /* canonical ink — deep indigo-blue */
+  --ink-700: #1e3a8a;
+  --ink-800: #1e2f6b;
+  --ink-900: #1e2a55;
+  --ink-950: #171c34;
+
+  /* Paper — warm off-white C-side surface */
+  --paper: #faf8f3;
+  --paper-foreground: #1a1714;
+
+  /* Data / status hues (charts + status only) */
+  --emerald-500: #10b981;
+  --emerald-600: #059669;
+  --amber-500: #f59e0b;
+  --rose-500: #f43f5e;
+  --violet-500: #a855f7;
+  --red-50: #fef2f2;
+  --red-400: #f87171;
+  --red-600: #dc2626;
+  --green-100: #dcfce7;
+  --green-700: #15803d;
+
+  /* Radius scale — meaningful hierarchy */
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius-md: 8px;  /* buttons, dense controls */
+  --radius-lg: 10px; /* inputs, popovers */
+  --radius-xl: 14px; /* cards, dialogs */
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+
+  /* Elevation — nearly flat. Prefer borders. */
+  --shadow-2xs: 0 1px 0 0 #0000000d;
+  --shadow-xs: 0 1px 2px 0 #0000000d;
+  --shadow-sm: 0 1px 3px 0 #0000001a, 0 1px 2px -1px #0000001a;
+  --shadow-md: 0 4px 6px -1px #0000001a, 0 2px 4px -2px #0000001a;
+  --shadow-lg: 0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a;
+  --shadow-xl: 0 20px 25px -5px #0000001a, 0 8px 10px -6px #0000001a;
+  --shadow-2xl: 0 25px 50px -12px #00000040;
+
+  /* Component constants */
+  --table-cell-height: 52px;
+  --table-body-max-height: 520px;
+  --sidebar-width-expanded: 264px;
+  --sidebar-width-collapsed: 64px;
+  --scrollbar-width: 8px;
+  --scrollbar-radius: 4px;
+}
+
+/* ============================================================================
+   2. SEMANTIC ROLES — LIGHT (default, paper-leaning for C-side)
+   Components bind to these, never to hex.
+   ============================================================================ */
+:root {
+  --background: var(--base-white);
+  --foreground: var(--neutral-950);
+  --card: var(--base-white);
+  --card-foreground: var(--neutral-950);
+  --popover: var(--base-white);
+  --popover-foreground: var(--neutral-950);
+  --primary: var(--ink-600);
+  --primary-foreground: #faf8f3;
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
+  --border: var(--neutral-200);
+  --input: var(--neutral-200);
+  --ring: var(--ink-600);
+  --destructive: var(--red-600);
+  --destructive-foreground: var(--red-50);
+
+  /* sidebar (console) */
+  --sidebar: var(--neutral-50);
+  --sidebar-foreground: var(--neutral-950);
+  --sidebar-primary: var(--ink-600);
+  --sidebar-primary-foreground: #faf8f3;
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--ink-600);
+
+  /* chart tokens */
+  --chart-1: var(--ink-600);
+  --chart-2: var(--emerald-500);
+  --chart-3: var(--amber-500);
+  --chart-4: var(--violet-500);
+  --chart-5: var(--rose-500);
+
+  /* Memory-status palette (domain status) */
+  --status-active-bg: #def8ee;       --status-active-fg: #1f8a52;
+  --status-candidate-bg: #eef4ff;    --status-candidate-fg: #3457b9;
+  --status-review-bg: #fff4d6;       --status-review-fg: #8a5a00;
+  --status-archived-bg: #f2f1ee;     --status-archived-fg: #6b6660;
+  --status-flagged-bg: #ffe4e6;      --status-flagged-fg: #b91c3a;
+}
+
+/* ============================================================================ */
+/* SEMANTIC ROLES — DARK (graphite instrument-panel, default for console)       */
+/* ============================================================================ */
+.dark {
+  --background: var(--neutral-950);
+  --foreground: #fafafa;
+  --card: var(--neutral-900);
+  --card-foreground: #fafafa;
+  --popover: var(--neutral-800);
+  --popover-foreground: #fafafa;
+  --primary: var(--ink-500);
+  --primary-foreground: #faf8f3;
+  --secondary: var(--neutral-800);
+  --secondary-foreground: #fafafa;
+  --muted: var(--neutral-800);
+  --muted-foreground: var(--neutral-400);
+  --accent: var(--neutral-800);
+  --accent-foreground: #fafafa;
+  --border: #ffffff1a;
+  --input: #ffffff26;
+  --ring: var(--ink-500);
+  --destructive: var(--red-400);
+  --destructive-foreground: var(--red-50);
+
+  --sidebar: var(--neutral-950);
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: var(--ink-500);
+  --sidebar-primary-foreground: #faf8f3;
+  --sidebar-accent: var(--neutral-800);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #ffffff1a;
+  --sidebar-ring: var(--ink-500);
+
+  --status-active-bg: #0f3d2a;       --status-active-fg: #4ade80;
+  --status-candidate-bg: #1e2a55;    --status-candidate-fg: #90b0fd;
+  --status-review-bg: #3d2f0a;       --status-review-fg: #fbbf24;
+  --status-archived-bg: #2a2a2a;     --status-archived-fg: #a3a3a3;
+  --status-flagged-bg: #3d1219;      --status-flagged-fg: #fb7185;
+}
+
+/* ---- Paper surface opt-in (C-side can force light paper regardless of theme) */
+.paper-surface {
+  --background: var(--paper);
+  --foreground: var(--paper-foreground);
+  --card: var(--base-white);
+  --card-foreground: var(--paper-foreground);
+  --popover: var(--base-white);
+  --popover-foreground: var(--paper-foreground);
+  --muted: #f1ede4;
+  --muted-foreground: #807868;
+  --accent: #f1ede4;
+  --accent-foreground: var(--paper-foreground);
+  --border: #e6dfd0;
+  --input: #e6dfd0;
+}
+
+/* ============================================================================
+   3. TAILWIND v4 THEME — expose tokens as utilities (colors, radii, fonts)
+   ============================================================================ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-ink-50: var(--ink-50);
+  --color-ink-100: var(--ink-100);
+  --color-ink-200: var(--ink-200);
+  --color-ink-300: var(--ink-300);
+  --color-ink-400: var(--ink-400);
+  --color-ink-500: var(--ink-500);
+  --color-ink-600: var(--ink-600);
+  --color-ink-700: var(--ink-700);
+  --color-ink-800: var(--ink-800);
+  --color-ink-900: var(--ink-900);
+
+  --color-paper: var(--paper);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ============================================================================
+   4. BASE
+   ============================================================================ */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* tabular figures for any numeric/ID data */
+  .tabular {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ============================================================================
+   5. UTILITIES — the uniform 8px scrollbar + helpers
+   ============================================================================ */
+@layer utilities {
+  .ds-scroll::-webkit-scrollbar { width: var(--scrollbar-width); height: var(--scrollbar-width); }
+  .ds-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--scrollbar-radius); }
+  .ds-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+  .ds-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+}
