@@ -291,9 +291,17 @@ function Bucket({
 
   return (
     <div className="rounded-2xl border bg-card overflow-hidden">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 p-4 text-left"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
+        className="flex w-full cursor-pointer items-center gap-3 p-4 text-left transition-colors hover:bg-accent/40"
       >
         <div className={cn("flex size-8 items-center justify-center rounded-lg", accentBg)}>
           <Icon className={cn("size-4", iconColor)} strokeWidth={1.5} />
@@ -303,9 +311,9 @@ function Bucket({
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
         <span className="tabular text-xs font-medium text-muted-foreground">{count}</span>
-        {action && <span onClick={(e) => { e.stopPropagation(); }}>{action}</span>}
+        {action}
         {open ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
-      </button>
+      </div>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div

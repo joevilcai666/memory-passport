@@ -1,11 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import {
   Cpu,
   RefreshCw,
   Download,
   MoreHorizontal,
   CircleCheck,
+  ArrowLeftRight,
+  TrendingUp,
+  ShieldCheck,
+  ArrowRight,
+  Smartphone,
 } from "lucide-react";
 import {
   Card,
@@ -42,8 +48,7 @@ function DeviceStatusBadge({ status }: { status: DeviceStatus }) {
     case "bound":
       return (
         <Badge variant="success" className="gap-1">
-          <CircleCheck className="size-2.5" />
-          Bound
+          <CircleCheck className="size-2.5" /> Bound
         </Badge>
       );
     case "registered":
@@ -57,7 +62,7 @@ function DeviceStatusBadge({ status }: { status: DeviceStatus }) {
   }
 }
 
-// ---- Migration row helpers ------------------------------------------------
+// ---- Migration helpers ----------------------------------------------------
 
 interface MigrationRow {
   id: string;
@@ -101,19 +106,15 @@ function MigrationActions({ row }: { row: MigrationRow }) {
                 })
               }
             >
-              <RefreshCw className="size-4" />
-              Retry
+              <RefreshCw className="size-4" /> Retry
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             onClick={() =>
-              toast.success("Report exported", {
-                description: `${row.moved} memories · JSON`,
-              })
+              toast.success("Report exported", { description: `${row.moved} memories · JSON` })
             }
           >
-            <Download className="size-4" />
-            Export report
+            <Download className="size-4" /> Export report
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -124,7 +125,7 @@ function MigrationActions({ row }: { row: MigrationRow }) {
 // ---- Page -----------------------------------------------------------------
 
 export default function DevicesConsolePage() {
-  const { devices, users, migration } = useMemoryStore();
+  const { devices, users, migration, app } = useMemoryStore();
 
   const userById = (id: string | null) =>
     id ? users.find((u) => u.id === id) : undefined;
@@ -169,23 +170,168 @@ export default function DevicesConsolePage() {
   ];
 
   const currentCompleted = migration.status === "completed";
+  const boundCount = devices.filter((d) => d.status === "bound").length;
+  const completedMigrations = rows.filter((r) => r.status === "completed").length;
+  const totalMigrations = rows.length;
+  const retentionRate = totalMigrations > 0 ? completedMigrations / totalMigrations : 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-1.5">
-        <h1 className="text-2xl font-medium tracking-tight">Devices</h1>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-2xl font-medium tracking-tight">Devices</h1>
+          <Badge variant="outline" className="text-[10px]">
+            {app.product_type === "software" ? "Software" : app.product_type === "hybrid" ? "Hybrid" : "Hardware"}
+          </Badge>
+        </div>
         <p className="text-sm text-muted-foreground">
-          Device models, bindings, and migrations across your fleet.
+          How memories move across device generations. The wedge that proves portability.
         </p>
       </div>
 
-      {/* Section 1 — Device models */}
+      {/* Migration health — what hardware customers actually care about */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <HealthTile
+          icon={ArrowLeftRight}
+          label="Migration success"
+          value={`${(retentionRate * 100).toFixed(0)}%`}
+          sub={`${completedMigrations}/${totalMigrations} recent`}
+          tone="emerald"
+        />
+        <HealthTile
+          icon={TrendingUp}
+          label="Memory retention"
+          value="98.1%"
+          sub="across v1→v2 moves"
+          tone="ink"
+        />
+        <HealthTile
+          icon={Smartphone}
+          label="Devices bound"
+          value={String(boundCount)}
+          sub={`${devices.length} registered`}
+          tone="neutral"
+        />
+        <HealthTile
+          icon={ShieldCheck}
+          label="Resale-safe wipes"
+          value="3"
+          sub="tombstone verified"
+          tone="neutral"
+        />
+      </div>
+
+      {/* Generation upgrade path — the strategic narrative */}
+      <Card className="border-primary/30 bg-primary/[0.03]">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowLeftRight className="size-4 text-primary" strokeWidth={1.75} />
+                Generation upgrade path
+              </CardTitle>
+              <CardDescription className="mt-1">
+                When a user upgrades hardware, their relationship memory follows. This is the core selling point for hardware products.
+              </CardDescription>
+            </div>
+            <Button size="sm" asChild className="shrink-0">
+              <Link href="/app/migrate">
+                Preview a migration
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Visual flow: v1 → migration engine → v2 */}
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <GenerationCard gen="v1" label="Luna Robot v1" state="current" />
+            <div className="flex flex-1 flex-col items-center gap-1 px-2 py-3 sm:py-0">
+              <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                <ArrowLeftRight className="size-3.5" strokeWidth={1.75} />
+                Migration engine
+              </div>
+              <p className="text-center text-[11px] text-muted-foreground">
+                portable ✓ travels · device-local ✕ stays
+              </p>
+            </div>
+            <GenerationCard
+              gen="v2"
+              label="Luna Robot v2"
+              state={currentCompleted ? "active" : "pending"}
+            />
+          </div>
+          {currentCompleted && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+              <CircleCheck className="size-4 text-emerald-500" />
+              <span>
+                <span className="font-medium">{migrationUser?.display_name}</span>&apos;s
+                relationship migrated to v2 — {migration.selected_memory_ids.length} memories inherited.
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent migrations */}
       <Card>
         <CardHeader>
-          <CardTitle>Device models</CardTitle>
+          <CardTitle>Recent migrations</CardTitle>
+          <CardDescription>Memory transfers between device generations.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-0">User</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>Memories moved</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead className="pr-0 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className={cn(
+                    "h-[52px]",
+                    row.id === migration.id && currentCompleted && "bg-emerald-500/5",
+                  )}
+                >
+                  <TableCell className="pl-0 font-medium">{row.userName}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="font-mono text-xs">{row.sourceGen}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="ink" className="font-mono text-xs">{row.targetGen}</Badge>
+                  </TableCell>
+                  <TableCell className="font-mono text-sm tabular">{row.moved}</TableCell>
+                  <TableCell>
+                    <MigrationStatusBadge status={row.status} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs tabular text-muted-foreground">
+                    {formatRelativeDay(row.time)}
+                  </TableCell>
+                  <TableCell className="pr-0">
+                    <MigrationActions row={row} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Device registry — supporting context (lifecycle / compliance) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Device registry</CardTitle>
           <CardDescription>
-            Every unit paired to this app and its binding status.
+            Lifecycle state of every unit. Bound, unbound, or wiped (resale-safe).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -209,10 +355,7 @@ export default function DevicesConsolePage() {
                     <TableCell className="pl-0">
                       <span className="flex items-center gap-2.5 font-medium">
                         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                          <Cpu
-                            className="size-3.5 text-primary"
-                            strokeWidth={1.5}
-                          />
+                          <Cpu className="size-3.5 text-primary" strokeWidth={1.5} />
                         </span>
                         {d.model}
                       </span>
@@ -221,9 +364,7 @@ export default function DevicesConsolePage() {
                       {isV2 ? (
                         <Badge variant="ink" className="gap-1">
                           {d.generation}
-                          <span className="rounded bg-ink-600/15 px-1 text-[10px] font-semibold">
-                            New
-                          </span>
+                          <span className="rounded bg-ink-600/15 px-1 text-[10px] font-semibold">New</span>
                         </Badge>
                       ) : (
                         <Badge variant="secondary">{d.generation}</Badge>
@@ -239,9 +380,7 @@ export default function DevicesConsolePage() {
                     </TableCell>
                     <TableCell>
                       {boundUser ? (
-                        <span className="text-sm">
-                          {boundUser.display_name}
-                        </span>
+                        <span className="text-sm">{boundUser.display_name}</span>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}
@@ -256,72 +395,69 @@ export default function DevicesConsolePage() {
           </Table>
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {/* Section 2 — Recent migrations */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent migrations</CardTitle>
-          <CardDescription>
-            Memory transfers between device generations.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-0">User</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Memories moved</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead className="pr-0 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  className={cn(
-                    "h-[52px]",
-                    row.id === migration.id &&
-                      currentCompleted &&
-                      "bg-emerald-500/5",
-                  )}
-                >
-                  <TableCell className="pl-0 font-medium">
-                    {row.userName}
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-xs tabular text-muted-foreground">
-                      {row.sourceGen}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs tabular text-muted-foreground">
-                        {row.targetGen}
-                      </span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm tabular">
-                    {row.moved}
-                  </TableCell>
-                  <TableCell>
-                    <MigrationStatusBadge status={row.status} />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs tabular text-muted-foreground">
-                    {formatRelativeDay(row.time)}
-                  </TableCell>
-                  <TableCell className="pr-0">
-                    <MigrationActions row={row} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+// ---- Health tile ----------------------------------------------------------
+
+function HealthTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  icon: typeof Cpu;
+  label: string;
+  value: string;
+  sub: string;
+  tone: "emerald" | "ink" | "neutral";
+}) {
+  const toneClass = {
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    ink: "text-primary",
+    neutral: "text-foreground",
+  }[tone];
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <Icon className={cn("size-3.5", toneClass)} strokeWidth={1.5} />
+      </div>
+      <p className={cn("mt-1.5 text-xl font-semibold tabular", toneClass)}>{value}</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>
+    </div>
+  );
+}
+
+// ---- Generation card (the upgrade flow visual) ---------------------------
+
+function GenerationCard({
+  gen,
+  label,
+  state,
+}: {
+  gen: string;
+  label: string;
+  state: "current" | "pending" | "active";
+}) {
+  const stateConfig = {
+    current: { badge: "Current", variant: "secondary" as const, ring: "" },
+    pending: { badge: "Awaiting", variant: "outline" as const, ring: "border-dashed" },
+    active: { badge: "Active", variant: "success" as const, ring: "border-emerald-500/40 bg-emerald-500/5" },
+  }[state];
+
+  return (
+    <div className={cn("flex-1 rounded-xl border p-4", stateConfig.ring)}>
+      <div className="flex items-center justify-between">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
+          <Cpu className="size-4 text-primary" strokeWidth={1.5} />
+        </span>
+        <Badge variant={stateConfig.variant} className="text-[10px]">{stateConfig.badge}</Badge>
+      </div>
+      <p className="mt-3 text-sm font-medium">{label}</p>
+      <p className="font-mono text-[11px] tabular text-muted-foreground">{gen}</p>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   Info,
   CheckCircle2,
   Rocket,
+  Circle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,7 @@ const severityConfig: Record<AlertSeverity, { icon: typeof AlertCircle; color: s
 };
 
 export default function OverviewPage() {
-  const { kpis, alerts, app, tenant, memories } = useMemoryStore();
+  const { kpis, alerts, app, tenant, memories, quickstart } = useMemoryStore();
 
   return (
     <div className="space-y-6">
@@ -99,25 +100,33 @@ export default function OverviewPage() {
         </Card>
       </div>
 
-      {/* Quickstart CTA + system health */}
+      {/* Onboarding banner — only shows while quickstart incomplete (Stripe-style) */}
+      <OnboardingBanner quickstart={quickstart} />
+
+      {/* Migration demo (the wedge) + system health */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-dashed bg-muted/30">
-          <CardContent className="flex items-center gap-4">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Rocket className="size-5 text-primary" strokeWidth={1.5} />
+        <Card className="overflow-hidden border-primary/30 bg-primary/[0.03]">
+          <CardContent className="p-0">
+            <div className="flex items-center gap-4 p-5">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+                <ArrowLeftRight className="size-5 text-primary" strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">Try the migration demo</p>
+                  <Badge variant="ink" className="text-[9px]">the wedge</Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Walk the v1→v2 memory migration as a user would. The core proof of portability.
+                </p>
+              </div>
+              <Button size="sm" asChild>
+                <Link href="/app/migrate">
+                  Try it
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">Run the 2-hour demo</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Send your first event, see a memory form, retrieve it across models.
-              </p>
-            </div>
-            <Button size="sm" asChild>
-              <Link href="/console/quickstart">
-                Open Quickstart
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
           </CardContent>
         </Card>
 
@@ -140,6 +149,60 @@ export default function OverviewPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function OnboardingBanner({ quickstart }: { quickstart: { apiKeyCreated: boolean; testUserCreated: boolean; firstEventSent: boolean; firstRetrieveDone: boolean } }) {
+  const steps = [
+    { label: "API key", done: quickstart.apiKeyCreated },
+    { label: "Test user", done: quickstart.testUserCreated },
+    { label: "First event", done: quickstart.firstEventSent },
+    { label: "Retrieve", done: quickstart.firstRetrieveDone },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const complete = doneCount === steps.length;
+  const pct = (doneCount / steps.length) * 100;
+
+  if (complete) return null;
+
+  return (
+    <Card className="border-primary/30 bg-primary/[0.03]">
+      <CardContent className="p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Rocket className="size-4 text-primary" strokeWidth={1.5} />
+              <p className="text-sm font-semibold">Get started — ship a memory loop in 2 hours</p>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {doneCount} of {steps.length} steps complete. Send your first event to see a memory form.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              {steps.map((s) => (
+                <span key={s.label} className="inline-flex items-center gap-1.5 text-xs">
+                  {s.done ? (
+                    <CheckCircle2 className="size-3.5 text-emerald-500" strokeWidth={1.75} />
+                  ) : (
+                    <Circle className="size-3.5 text-muted-foreground/50" strokeWidth={1.75} />
+                  )}
+                  <span className={s.done ? "text-foreground" : "text-muted-foreground"}>{s.label}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+          <Button size="sm" asChild className="shrink-0">
+            <Link href="/console/quickstart">
+              Continue setup
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+        {/* progress bar */}
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

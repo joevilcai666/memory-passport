@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Menu, ExternalLink, Smartphone, Brain, ShieldCheck, ArrowLeftRight } from "lucide-react";
+import { Sun, Moon, Menu, Smartphone, Brain, ShieldCheck, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
