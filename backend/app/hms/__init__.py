@@ -1,13 +1,21 @@
 """HMS HTTP client — the thin wrapper MP uses to talk to the memory engine.
 
-Slice 1 only needs:
-* :meth:`HmsClient.health` — ping ``GET /health`` (used by ``/v1/health``).
-* :meth:`HmsClient.put_bank` — provision an empty bank via
-  ``PUT /v1/default/banks/{bank_id}`` (HMS auto-creates with defaults; no LLM
-  call is made). Used by the seed script.
+Methods (one per HMS endpoint MP needs):
+* :meth:`health`       — ``GET /health`` (liveness probe).
+* :meth:`put_bank`     — ``PUT /v1/default/banks/{bank_id}`` (idempotent create).
+* :meth:`list_banks`   — ``GET /v1/default/banks`` (test introspection).
+* :meth:`retain`       — ``POST /v1/default/banks/{bank_id}/memories`` (ingest).
+* :meth:`recall`       — ``POST /v1/default/banks/{bank_id}/memories/recall`` (retrieve).
+* :meth:`list_memories`— ``GET /v1/default/banks/{bank_id}/memories/list`` (verify).
 
-retain/recall land in later slices; stubs are deliberately omitted to keep the
-slice honest (this is the prefactor, not the engine).
+HMS contract notes (verified at submodule pin ``a808ab393ca0``):
+* ``retain`` runs an LLM internally (one item in → potentially N memory_units
+  out) and does NOT return the created unit ids. The ingest pipeline reconciles
+  via :meth:`list_memories` + a ``document_id`` correlation key.
+* ``recall`` returns ranked results but **strips the relevance score** — MP
+  ranks/caps client-side using ``policy.retrieval.max_memories_per_response``.
+* ``metadata`` values must be strings; ``tags`` is free-form (no pre-creation).
+* The literal ``default`` path segment is a fixed HMS namespace, not a tenant.
 """
 
 from __future__ import annotations
@@ -84,6 +92,109 @@ class HmsClient:
         except Exception as exc:  # noqa: BLE001
             raise HmsError(f"HMS list_banks failed: {exc}") from exc
 
+    async def retain(
+        self,
+        bank_id: str,
+        items: list[dict[str, Any]],
+        *,
+        async_: bool = False,
+    ) -> dict[str, Any]:
+        """POST /v1/default/banks/{bank_id}/memories — ingest one or more items.
+
+        HMS runs the LLM extraction/embedding/dedup internally. Each item should
+        carry a ``document_id`` correlation key (we set it to the MP event_id)
+        so the caller can reconcile the created memory_units via
+        :meth:`list_memories` — HMS's retain response carries no unit ids.
+
+        ``async_`` controls HMS's own async mode (JSON key is literally
+        ``async``). MP uses sync retains so the response is final by the time
+        the handler returns.
+
+        Returns the HMS ``RetainResponse`` (``success``, ``items_count``,
+        ``usage``, …). Raises :class:`HmsError` on transport/HTTP failure.
+        """
+        url = f"{self._base_url}/v1/default/banks/{bank_id}/memories"
+        body: dict[str, Any] = {"items": items, "async": async_}
+        try:
+            async with self._client() as client:
+                resp = await client.post(url, json=body, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(f"HMS retain({bank_id}) failed: {exc}") from exc
+
+    async def recall(
+        self,
+        bank_id: str,
+        *,
+        query: str,
+        types: list[str] | None = None,
+        budget: str = "mid",
+        tags: list[str] | None = None,
+        tags_match: str = "any",
+        include_trace: bool = False,
+    ) -> dict[str, Any]:
+        """POST /v1/default/banks/{bank_id}/memories/recall — semantic search.
+
+        Returns ``{"results": [RecallResult, ...], "trace"?: {...}}``. Each
+        result has ``id``, ``text``, ``type``, ``entities``, ``context``,
+        ``tags``, ``document_id`` — but NO relevance score (HMS strips it).
+        Ranking is implicit in the result order.
+
+        ``types`` filters HMS fact types (``world``/``experience``/``observation``).
+        ``tags`` + ``tags_match`` filter by visibility-scope tags set at retain
+        (``any`` includes untagged; ``any_strict`` requires at least one tag).
+        """
+        url = f"{self._base_url}/v1/default/banks/{bank_id}/memories/recall"
+        body: dict[str, Any] = {
+            "query": query,
+            "budget": budget,
+            "trace": include_trace,
+            "tags_match": tags_match,
+        }
+        if types is not None:
+            body["types"] = types
+        if tags is not None:
+            body["tags"] = tags
+        try:
+            async with self._client() as client:
+                resp = await client.post(url, json=body, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(f"HMS recall({bank_id}) failed: {exc}") from exc
+
+    async def list_memories(
+        self,
+        bank_id: str,
+        *,
+        q: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """GET /v1/default/banks/{bank_id}/memories/list — list memory_units.
+
+        Used by the ingest pipeline to reconcile the units HMS created from a
+        retain (HMS retain returns no ids). ``q`` is an ILIKE over text+context
+        — for document_id-based correlation, list a wide window then filter
+        client-side on ``document_id`` (the field is present on each item).
+
+        Returns ``{"items": [...], "total", "limit", "offset"}``. Each item has
+        ``id``, ``text``, ``context``, ``document_id``, ``fact_type``,
+        ``mentioned_at``, ``tags``, …
+        """
+        url = f"{self._base_url}/v1/default/banks/{bank_id}/memories/list"
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if q:
+            params["q"] = q
+        try:
+            async with self._client() as client:
+                resp = await client.get(url, params=params, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(f"HMS list_memories({bank_id}) failed: {exc}") from exc
+
     def _client(self) -> httpx.AsyncClient:
         """Build a short-lived client.
 
@@ -92,3 +203,7 @@ class HmsClient:
         would otherwise leak into the container and break the internal call).
         """
         return httpx.AsyncClient(timeout=self._timeout, trust_env=False)
+
+
+__all__ = ["HmsClient", "HmsError"]
+

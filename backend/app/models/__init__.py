@@ -7,7 +7,9 @@ Alembic's ``env.py`` introspects for autogenerate.
 from app.models.audit import AuditLog
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import AutoWriteRule, MemoryPolicy, MemoryRecord
+from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.migration import Migration
+from app.models.retrieval_trace import RetrievalTrace
 from app.models.tenant import ApiKey, App, Tenant
 
 __all__ = [
@@ -20,7 +22,9 @@ __all__ = [
     "Migration",
     "MemoryPolicy",
     "MemoryRecord",
+    "MemoryRecordHmsUnit",
     "Relationship",
+    "RetrievalTrace",
     "Tenant",
     "User",
 ]

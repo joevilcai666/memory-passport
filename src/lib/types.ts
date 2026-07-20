@@ -249,7 +249,10 @@ export type AuditAction =
   | "agent.created"
   | "user.created"
   | "relationship.created"
-  | "device.registered";
+  | "device.registered"
+  | "memory.blocked"
+  | "retrieval.performed"
+  | "device.wiped";
 
 export interface AuditLog {
   id: ID;

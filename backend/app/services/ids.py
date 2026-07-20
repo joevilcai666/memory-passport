@@ -53,6 +53,21 @@ def new_relationship_id() -> str:
     return _token("rel")
 
 
+def new_memory_id() -> str:
+    """MP MemoryRecord id (mirrors the seeded ``mem_…`` convention)."""
+    return _token("mem")
+
+
+def new_event_id() -> str:
+    """Ingest event id (the correlation key sent to HMS as document_id)."""
+    return _token("evt")
+
+
+def new_trace_id() -> str:
+    """RetrievalTrace id (returned to the caller as trace_id)."""
+    return _token("trc")
+
+
 def new_device_id() -> str:
     return _token("dev")
 

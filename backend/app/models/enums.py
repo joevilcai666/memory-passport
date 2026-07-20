@@ -154,6 +154,10 @@ class AuditAction(str, enum.Enum):
     USER_CREATED = "user.created"
     RELATIONSHIP_CREATED = "relationship.created"
     DEVICE_REGISTERED = "device.registered"
+    # Slice 3/4/7 — pipeline actions.
+    MEMORY_BLOCKED = "memory.blocked"  # S3 event blocked end-to-end (no HMS call)
+    RETRIEVAL_PERFORMED = "retrieval.performed"
+    DEVICE_WIPED = "device.wiped"
 
 
 class TeamRole(str, enum.Enum):
