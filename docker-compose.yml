@@ -1,0 +1,148 @@
+# =============================================================================
+# Memory Passport — Slice 1 local stack
+# Four services, all healthchecked:
+#   postgres   shared pgvector instance (two DBs: memory_passport for MP, hms for HMS)
+#   hms-api    Holographic Memory System FastAPI service (:18080, vendored submodule)
+#   hms-worker HMS async-retain poller (same HMS image, standalone `hms-worker` CLI)
+#   mp-backend Memory Passport FastAPI service (:8000, hot-reload in dev)
+#
+# Usage:
+#   cp .env.example .env   # then edit *_change_me values
+#   docker-compose up -d
+#   docker-compose exec mp-backend python -m app.seed.run_seed
+#   curl -s http://localhost:8000/v1/health   # -> {"mp":"ok","hms":"ok","db":"ok"}
+# =============================================================================
+name: memory-passport
+
+x-hms-common-env: &hms-common-env
+  HMS_API_DATABASE_BACKEND: postgresql
+  HMS_API_DATABASE_URL: postgresql://${HMS_DB_USER:-hms}:${HMS_DB_PASSWORD:-hms_dev_password_change_me}@postgres:5432/${HMS_DB_NAME:-hms}
+  HMS_API_DATABASE_SCHEMA: ${HMS_API_DATABASE_SCHEMA:-tenant_luna}
+  HMS_API_VECTOR_EXTENSION: pgvector
+  HMS_API_TENANT_EXTENSION: hms_api.extensions.builtin.tenant:ApiKeyTenantExtension
+  HMS_API_TENANT_API_KEY: ${HMS_API_TENANT_API_KEY:-hms_tenant_luna_change_me}
+  HMS_API_RUN_MIGRATIONS_ON_STARTUP: "true"
+  HMS_API_SKIP_LLM_VERIFICATION: ${HMS_API_SKIP_LLM_VERIFICATION:-true}
+  HMS_API_LLM_PROVIDER: ${HMS_API_LLM_PROVIDER:-openai}
+  HMS_API_LLM_MODEL: ${HMS_API_LLM_MODEL:-gpt-4o}
+  HMS_API_LLM_API_KEY: ${HMS_API_LLM_API_KEY:-openai_key_change_me}
+  HMS_API_LLM_BASE_URL: ${HMS_API_LLM_BASE_URL:-}
+  HMS_API_RETAIN_LLM_PROVIDER: ${HMS_API_RETAIN_LLM_PROVIDER:-openai}
+  HMS_API_RETAIN_LLM_MODEL: ${HMS_API_RETAIN_LLM_MODEL:-gpt-4o}
+  HMS_API_RETAIN_LLM_API_KEY: ${HMS_API_RETAIN_LLM_API_KEY:-openai_key_change_me}
+  HMS_API_RETAIN_LLM_BASE_URL: ${HMS_API_RETAIN_LLM_BASE_URL:-}
+  HMS_API_EMBEDDINGS_PROVIDER: ${HMS_API_EMBEDDINGS_PROVIDER:-openai}
+  HMS_API_EMBEDDINGS_OPENAI_MODEL: ${HMS_API_EMBEDDINGS_OPENAI_MODEL:-text-embedding-3-small}
+  HMS_API_EMBEDDINGS_OPENAI_API_KEY: ${HMS_API_EMBEDDINGS_OPENAI_API_KEY:-openai_key_change_me}
+  HMS_API_EMBEDDINGS_OPENAI_BASE_URL: ${HMS_API_EMBEDDINGS_OPENAI_BASE_URL:-}
+  HMS_API_RERANKER_PROVIDER: rrf
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    # Provision the mp + hms roles/databases on first boot. The script is
+    # idempotent against an existing volume (skips roles/DBs that exist).
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init-mp-hms.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - mp-net
+
+  hms-api:
+    build:
+      context: ./vendor/hms
+      dockerfile: docker/hms-api.Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *hms-common-env
+      HMS_API_HOST: 0.0.0.0
+      HMS_API_PORT: "18080"
+      HMS_API_LOG_LEVEL: ${HMS_API_LOG_LEVEL:-info}
+      HMS_API_LOG_FORMAT: ${HMS_API_LOG_FORMAT:-json}
+      # The worker runs as its own service below; disable the in-process poller
+      # in hms-api so the two don't contend for the same task queue.
+      HMS_API_WORKER_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${HMS_LOCAL_API_PORT:-18080}:18080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:18080/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - mp-net
+
+  hms-worker:
+    # Same image as hms-api; the worker is the standalone `hms-worker` CLI
+    # (hms_api.worker.main:main). It loads the same tenant extension + DB so it
+    # polls the same task backend and writes under the same tenant_luna schema.
+    build:
+      context: ./vendor/hms
+      dockerfile: docker/hms-api.Dockerfile
+    restart: unless-stopped
+    command: ["hms-worker", "--http-host", "0.0.0.0", "--http-port", "8889"]
+    environment:
+      <<: *hms-common-env
+      HMS_API_WORKER_ID: hms-worker-1
+      HMS_API_WORKER_HTTP_PORT: "8889"
+      HMS_API_LOG_LEVEL: ${HMS_API_LOG_LEVEL:-info}
+      HMS_API_LOG_FORMAT: ${HMS_API_LOG_FORMAT:-json}
+    depends_on:
+      hms-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8889/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - mp-net
+
+  mp-backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${MP_DB_USER:-mp}:${MP_DB_PASSWORD:-mp_dev_password_change_me}@postgres:5432/${MP_DB_NAME:-memory_passport}
+      HMS_API_URL: http://hms-api:18080
+      HMS_API_KEY: ${HMS_API_TENANT_API_KEY:-hms_tenant_luna_change_me}
+      MP_SEED_API_KEY: ${MP_SEED_API_KEY:-mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd}
+      MP_HOST: 0.0.0.0
+      MP_PORT: "8000"
+      MP_LOG_LEVEL: ${MP_LOG_LEVEL:-info}
+      MP_RUN_MIGRATIONS_ON_STARTUP: "true"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "127.0.0.1:${MP_PORT:-8000}:8000"
+    depends_on:
+      hms-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/v1/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks:
+      - mp-net
+
+networks:
+  mp-net:
+    driver: bridge

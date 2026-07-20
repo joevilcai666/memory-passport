@@ -103,6 +103,27 @@ All state is live and mutable: toggle policy, edit/delete memories, run the migr
 
 ---
 
+## Backend (V0.1, Slice 1)
+
+A Python **FastAPI** service in `backend/` wraps the
+[Holographic Memory System (HMS)](https://github.com/Shadow-Weave/HMS) and
+implements the MP data model from PRD §7–§11. Run it with docker-compose
+alongside the prototype:
+
+```bash
+git submodule update --init --recursive   # fetch vendored HMS @ a808ab393ca0
+cp .env.example .env                       # edit *_change_me values
+docker-compose up -d
+docker-compose exec mp-backend python -m app.seed.run_seed
+curl -s http://localhost:8000/v1/health    # -> {"mp":"ok","hms":"ok","db":"ok"}
+```
+
+See **[`backend/README.md`](backend/README.md)** for the full guide
+(make targets, env vars, the Luna seed, local dev). The Next.js prototype is
+unchanged — the backend shares the repo but runs as its own service.
+
+---
+
 ## Design principles honored (from the PRD)
 
 - **"Powered by Memory Passport"** appears on every user-facing screen — the network-effect seed.

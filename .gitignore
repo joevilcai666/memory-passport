@@ -32,6 +32,22 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# backend (python) — Slice 1
+/backend/.venv/
+/backend/__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# docker volumes (gitignored; recreated by docker-compose up)
+/volumes/
+
+# local agent/IDE session workspace (not part of the repo)
+.zcode/
 
 # vercel
 .vercel

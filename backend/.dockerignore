@@ -1,0 +1,20 @@
+# Python build/test artifacts — never copy into the image.
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local IDE / OS clutter.
+.vscode/
+.idea/
+.DS_Store
+
+# Env files stay on the host; compose injects env vars directly.
+.env
+.env.*
+
+# Git.
+.git/
+.gitignore
