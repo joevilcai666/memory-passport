@@ -11,7 +11,7 @@ MP_EXEC ?= $(DC) exec mp-backend
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build all docker images
+build: ## Build the default local images
 	$(DC) build
 
 up: ## Start the credential-free stack (postgres + demo hms-api + mp-backend)
