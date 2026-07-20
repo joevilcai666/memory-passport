@@ -11,6 +11,7 @@ from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.migration import Migration
 from app.models.retrieval_trace import RetrievalTrace
 from app.models.tenant import ApiKey, App, Tenant
+from app.models.usage import UsageEvent
 
 __all__ = [
     "Agent",
@@ -27,4 +28,5 @@ __all__ = [
     "RetrievalTrace",
     "Tenant",
     "User",
+    "UsageEvent",
 ]

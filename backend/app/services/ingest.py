@@ -37,6 +37,7 @@ from app.models.enums import (
     AuditAction,
     MemoryScope,
     MemoryStatus,
+    UsageOperation,
 )
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
@@ -50,6 +51,7 @@ from app.services.policy import (
     resolve_policy,
     status_for_sensitivity,
 )
+from app.services.usage import write_usage
 
 
 def _now() -> datetime:
@@ -212,6 +214,8 @@ async def ingest_event(
     # If HMS produced no units (dedup, empty content), the event is a NOOP.
     if not results:
         results.append((event_id, "NOOP"))
+
+    write_usage(db, tenant.id, user.id, UsageOperation.INGEST)
 
     return IngestOutcome(event_id=event_id, results=results, blocked=False)
 

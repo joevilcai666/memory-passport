@@ -138,6 +138,13 @@ class OldDeviceAccess(str, enum.Enum):
     REMOVE = "remove"
 
 
+class UsageOperation(str, enum.Enum):
+    INGEST = "ingest"
+    RETRIEVE = "retrieve"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
 class AuditAction(str, enum.Enum):
     MEMORY_CREATED = "memory.created"
     MEMORY_DELETED = "memory.deleted"
@@ -210,6 +217,7 @@ PG_PORTABILITY_LAYER = _pg_enum(PortabilityLayer, "portability_layer")
 PG_AUTOWRITE_ACTION = _pg_enum(AutoWriteAction, "autowrite_action")
 PG_MIGRATION_STATUS = _pg_enum(MigrationStatus, "migration_status")
 PG_OLD_DEVICE_ACCESS = _pg_enum(OldDeviceAccess, "old_device_access")
+PG_USAGE_OPERATION = _pg_enum(UsageOperation, "usage_operation")
 PG_AUDIT_ACTION = _pg_enum(AuditAction, "audit_action")
 PG_TEAM_ROLE = _pg_enum(TeamRole, "team_role")
 PG_SOURCE_TYPE = _pg_enum(SourceType, "source_type")

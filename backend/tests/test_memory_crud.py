@@ -17,11 +17,13 @@ from app.models.enums import (
     MemorySensitivity,
     MemoryStatus,
     MemoryType,
+    UsageOperation,
 )
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.tenant import ApiKey, App, Tenant
+from app.models.usage import UsageEvent
 
 
 def _now() -> datetime:
@@ -350,6 +352,7 @@ def test_content_edit_creates_version_archives_old_and_audits(crud_seed, app_cli
         assert mapping.hms_unit_id == "hms_edited"
         audit = db.query(AuditLog).filter(AuditLog.target == edited["id"]).one()
         assert audit.action == AuditAction.MEMORY_EDITED
+        assert db.query(UsageEvent).one().operation == UsageOperation.UPDATE
 
 
 def test_two_edits_preserve_the_complete_supersedes_chain(crud_seed, app_client):
@@ -454,6 +457,7 @@ def test_delete_is_tombstone_removes_mapping_and_is_not_retrieved(crud_seed, app
         assert db.get(MemoryRecordHmsUnit, "mem_active") is None
         audit = db.query(AuditLog).filter(AuditLog.target == "mem_active").one()
         assert audit.action == AuditAction.MEMORY_DELETED
+        assert db.query(UsageEvent).one().operation == UsageOperation.DELETE
 
 
 def test_cross_tenant_mutations_are_not_found(crud_seed, app_client):

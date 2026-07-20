@@ -18,11 +18,13 @@ from app.models.enums import (
     MemoryScope,
     MemoryStatus,
     MemoryType,
+    UsageOperation,
 )
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.services.audit import api_actor, write_audit
 from app.services.ids import new_event_id, new_memory_id
+from app.services.usage import write_usage
 
 LEGAL: dict[MemoryStatus, set[MemoryStatus]] = {
     MemoryStatus.CANDIDATE: {MemoryStatus.ACTIVE, MemoryStatus.NEEDS_REVIEW},
@@ -212,6 +214,7 @@ async def edit_memory(
         target=edited.id,
         detail=f"Edited memory {old.id}; created version {edited.version}",
     )
+    write_usage(db, edited.tenant_id, edited.user_id, UsageOperation.UPDATE)
     return edited
 
 
@@ -250,6 +253,7 @@ async def transition_memory(
         target=record.id,
         detail=f"Changed memory status {previous.value} -> {target_status.value}",
     )
+    write_usage(db, record.tenant_id, record.user_id, UsageOperation.UPDATE)
     return record
 
 
@@ -281,6 +285,7 @@ async def delete_memory(
         target=record.id,
         detail=f"Tombstoned memory {record.id} and suppressed its HMS mapping",
     )
+    write_usage(db, record.tenant_id, record.user_id, UsageOperation.DELETE)
     return record
 
 

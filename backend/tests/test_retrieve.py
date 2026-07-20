@@ -24,12 +24,14 @@ from app.models.enums import (
     MemorySensitivity,
     MemoryStatus,
     MemoryType,
+    UsageOperation,
 )
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryPolicy, MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.retrieval_trace import RetrievalTrace
 from app.models.tenant import ApiKey, App, Tenant
+from app.models.usage import UsageEvent
 
 
 def _now() -> datetime:
@@ -281,6 +283,15 @@ def test_tombstoned_memory_is_excluded_from_subsequent_retrieve(
     assert deleted.status_code == 200
     assert recalled.status_code == 200
     assert recalled.json()["results"] == []
+    with session_scope() as db:
+        operations = [
+            event.operation
+            for event in db.query(UsageEvent).order_by(UsageEvent.timestamp)
+        ]
+        assert operations == [
+            UsageOperation.DELETE,
+            UsageOperation.RETRIEVE,
+        ]
 
 
 # ---------------------------------------------------------------------------

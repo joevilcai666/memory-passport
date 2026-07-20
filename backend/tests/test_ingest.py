@@ -29,11 +29,13 @@ from app.models.enums import (
     MemorySensitivity,
     MemoryStatus,
     MemoryType,
+    UsageOperation,
 )
 from app.models.identity import Agent, Relationship, User
 from app.models.memory import MemoryPolicy, MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.tenant import ApiKey, App, Tenant
+from app.models.usage import UsageEvent
 
 
 def _now() -> datetime:
@@ -290,6 +292,9 @@ def test_ingest_creates_mp_records_backed_by_hms_units(seeded_for_ingest, app_cl
             ).one()
             assert mapping.hms_document_id == body["event_id"]
             assert mapping.hms_bank_id == seeded_for_ingest["user_id"]
+        usage = db.query(UsageEvent).one()
+        assert usage.operation == UsageOperation.INGEST
+        assert usage.user_id == seeded_for_ingest["user_id"]
 
 
 # ---------------------------------------------------------------------------

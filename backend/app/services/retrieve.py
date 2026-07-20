@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
-from app.models.enums import AuditAction, MemoryStatus
+from app.models.enums import AuditAction, MemoryStatus, UsageOperation
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
@@ -40,6 +40,7 @@ from app.services.audit import api_actor, write_audit
 from app.services.ids import new_trace_id
 from app.services.policy import resolve_policy
 from app.services.scopes import is_readable, project_record
+from app.services.usage import write_usage
 
 
 def _now() -> datetime:
@@ -204,6 +205,7 @@ async def retrieve_memories(
             f"(query={query!r}, model={model})"
         ),
     )
+    write_usage(db, tenant.id, user.id, UsageOperation.RETRIEVE)
 
     return RetrieveOutcome(
         trace_id=trace_id,
