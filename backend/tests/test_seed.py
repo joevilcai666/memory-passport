@@ -17,15 +17,13 @@ from app.db.base import _JSON_DUMPS, Base
 from app.db.session import reset_engine_for_tests
 from app.models.identity import User
 from app.seed import data as seed_data
+from tests.service_dependencies import postgres_available
 
-
-def _is_postgres() -> bool:
-    return get_settings().database_url.startswith("postgresql")
-
+pytestmark = pytest.mark.postgres
 
 pg_only = pytest.mark.skipif(
-    not _is_postgres(),
-    reason="seed-count tests require Postgres (run via `docker-compose run mp-backend pytest`)",
+    not postgres_available(),
+    reason="seed-count tests require a reachable Postgres service",
 )
 
 

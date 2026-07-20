@@ -47,8 +47,10 @@ def upgrade() -> None:
         sa.Column("hms_bank_id", sa.String(64), nullable=False),
         sa.Column("hms_document_id", sa.String(128), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.ForeignKey(
-            ["mp_memory_id"], ["memory_records.id"], ondelete="CASCADE"
+        sa.ForeignKeyConstraint(
+            ["mp_memory_id"],
+            ["memory_records.id"],
+            ondelete="CASCADE",
         ),
     )
     op.create_index(

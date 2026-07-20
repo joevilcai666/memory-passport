@@ -13,16 +13,15 @@ from sqlalchemy import create_engine, inspect, text
 
 from alembic import command
 from app.config import get_settings
+from tests.service_dependencies import postgres_available
 
-
-def _is_postgres() -> bool:
-    return get_settings().database_url.startswith("postgresql")
-
-
-pytestmark = pytest.mark.skipif(
-    not _is_postgres(),
-    reason="migration tests require Postgres (run via `docker-compose run mp-backend pytest`)",
-)
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(
+        not postgres_available(),
+        reason="migration tests require a reachable Postgres service",
+    ),
+]
 
 
 @pytest.fixture()

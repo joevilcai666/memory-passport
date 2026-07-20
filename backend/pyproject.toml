@@ -36,6 +36,14 @@ packages = ["app"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q"
+markers = [
+  "postgres: requires a reachable PostgreSQL service",
+  "hms: requires a reachable HMS HTTP service",
+  "compose: exercises the complete Docker Compose stack",
+]
+filterwarnings = [
+  "ignore:Using .*starlette.testclient.*:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100

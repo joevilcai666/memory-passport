@@ -21,6 +21,7 @@ HMS contract notes (verified at submodule pin ``a808ab393ca0``):
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -195,6 +196,54 @@ class HmsClient:
         except Exception as exc:  # noqa: BLE001
             raise HmsError(f"HMS list_memories({bank_id}) failed: {exc}") from exc
 
+    async def update_document_tags(
+        self,
+        bank_id: str,
+        document_id: str,
+        tags: list[str],
+    ) -> dict[str, Any]:
+        """PATCH the tags on an HMS source document."""
+        encoded_document_id = quote(document_id, safe="")
+        url = (
+            f"{self._base_url}/v1/default/banks/{bank_id}/documents/"
+            f"{encoded_document_id}"
+        )
+        try:
+            async with self._client() as client:
+                resp = await client.patch(url, json={"tags": tags}, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(
+                f"HMS update_document_tags({bank_id}, {document_id}) failed: {exc}"
+            ) from exc
+
+    async def delete_document(self, bank_id: str, document_id: str) -> dict[str, Any]:
+        """DELETE an HMS document and its derived memory units."""
+        encoded_document_id = quote(document_id, safe="")
+        url = (
+            f"{self._base_url}/v1/default/banks/{bank_id}/documents/"
+            f"{encoded_document_id}"
+        )
+        try:
+            async with self._client() as client:
+                resp = await client.delete(url, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(f"HMS delete_document({bank_id}, {document_id}) failed: {exc}") from exc
+
+    async def delete_bank(self, bank_id: str) -> dict[str, Any]:
+        """DELETE an HMS bank and all of its data."""
+        url = f"{self._base_url}/v1/default/banks/{bank_id}"
+        try:
+            async with self._client() as client:
+                resp = await client.delete(url, headers=self._headers)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HmsError(f"HMS delete_bank({bank_id}) failed: {exc}") from exc
+
     def _client(self) -> httpx.AsyncClient:
         """Build a short-lived client.
 
@@ -206,4 +255,3 @@ class HmsClient:
 
 
 __all__ = ["HmsClient", "HmsError"]
-

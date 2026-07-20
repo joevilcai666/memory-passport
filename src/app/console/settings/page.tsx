@@ -58,7 +58,7 @@ interface AuditMeta {
   color: string;
 }
 
-const auditMeta: Record<AuditAction, AuditMeta> = {
+const auditMeta: Partial<Record<AuditAction, AuditMeta>> = {
   "memory.created": { label: "memory.created", Icon: Plus, tint: "bg-emerald-500/10", color: "text-emerald-600 dark:text-emerald-400" },
   "memory.edited": { label: "memory.edited", Icon: Pencil, tint: "bg-ink-600/10", color: "text-ink-700 dark:text-ink-300" },
   "memory.deleted": { label: "memory.deleted", Icon: Trash2, tint: "bg-rose-500/10", color: "text-rose-600 dark:text-rose-400" },
@@ -70,6 +70,15 @@ const auditMeta: Record<AuditAction, AuditMeta> = {
   "migration.completed": { label: "migration.completed", Icon: History, tint: "bg-emerald-500/10", color: "text-emerald-600 dark:text-emerald-400" },
   "memory.exported": { label: "memory.exported", Icon: Download, tint: "bg-amber-500/10", color: "text-amber-600 dark:text-amber-400" },
 };
+
+function metaForAudit(action: AuditAction): AuditMeta {
+  return auditMeta[action] ?? {
+    label: action,
+    Icon: History,
+    tint: "bg-neutral-500/10",
+    color: "text-neutral-600 dark:text-neutral-400",
+  };
+}
 
 // ---- Page -----------------------------------------------------------------
 
@@ -171,7 +180,7 @@ export default function SettingsPage() {
             <CardContent>
               <ol className="space-y-0">
                 {auditLogs.map((log, i) => {
-                  const meta = auditMeta[log.action];
+                  const meta = metaForAudit(log.action);
                   const Icon = meta.Icon;
                   return (
                     <li

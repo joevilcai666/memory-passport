@@ -44,7 +44,12 @@ async def health() -> JSONResponse:
     except Exception:  # noqa: BLE001
         hms = "error"
 
-    payload = {"mp": mp, "hms": hms, "db": db}
-    all_ok = all(v == "ok" for v in payload.values())
+    payload = {
+        "mp": mp,
+        "hms": hms,
+        "db": db,
+        "memory_engine": get_settings().memory_engine_mode,
+    }
+    all_ok = all(v == "ok" for v in (mp, hms, db))
     code = status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(status_code=code, content=payload)

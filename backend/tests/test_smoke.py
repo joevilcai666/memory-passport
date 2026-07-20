@@ -14,16 +14,15 @@ import app.models  # noqa: F401
 from app.config import get_settings
 from app.db.base import _JSON_DUMPS, Base
 from app.db.session import reset_engine_for_tests
+from tests.service_dependencies import postgres_available
 
-
-def _is_postgres() -> bool:
-    return get_settings().database_url.startswith("postgresql")
-
-
-pytestmark = pytest.mark.skipif(
-    not _is_postgres(),
-    reason="smoke test requires Postgres (run via `docker-compose run mp-backend pytest`)",
-)
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(
+        not postgres_available(),
+        reason="smoke test requires a reachable Postgres service",
+    ),
+]
 
 
 @pytest.fixture()
@@ -80,4 +79,9 @@ def test_seed_then_health_reports_all_ok(pg_app):
         resp = pg_app.get("/v1/health")
 
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"mp": "ok", "hms": "ok", "db": "ok"}
+    assert resp.json() == {
+        "mp": "ok",
+        "hms": "ok",
+        "db": "ok",
+        "memory_engine": "demo",
+    }

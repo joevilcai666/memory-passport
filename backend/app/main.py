@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
 from app.auth import auth_middleware
-from app.config import get_settings
+from app.config import get_settings, validate_real_hms_configuration
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ def _run_migrations() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: run migrations. Nothing to clean up on shutdown."""
+    validate_real_hms_configuration(get_settings())
     _run_migrations()
     yield
 

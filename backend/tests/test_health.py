@@ -13,7 +13,12 @@ def test_health_all_ok(app_client):
         resp = app_client.get("/v1/health")
 
     assert resp.status_code == 200
-    assert resp.json() == {"mp": "ok", "hms": "ok", "db": "ok"}
+    assert resp.json() == {
+        "mp": "ok",
+        "hms": "ok",
+        "db": "ok",
+        "memory_engine": "demo",
+    }
 
 
 def test_health_hms_downgrades_to_error(app_client):
@@ -27,6 +32,7 @@ def test_health_hms_downgrades_to_error(app_client):
     assert body["mp"] == "ok"
     assert body["db"] == "ok"
     assert body["hms"] == "error"
+    assert body["memory_engine"] == "demo"
 
 
 def test_health_hms_unreachable(app_client):

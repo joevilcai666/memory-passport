@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Independent Python service and vendored HMS submodule.
+    "backend/**",
+    "vendor/hms/**",
+    // Local runtime/worktree output is never application source.
+    ".worktrees/**",
+    "var/**",
   ]),
 ]);
 

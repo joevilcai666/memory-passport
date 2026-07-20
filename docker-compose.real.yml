@@ -1,0 +1,80 @@
+# Overlay for the pinned, model-backed HMS inference chain.
+# Run through `make real-up` so placeholder credentials are rejected first.
+
+x-hms-real-env: &hms-real-env
+  HMS_API_DATABASE_BACKEND: postgresql
+  HMS_API_DATABASE_URL: postgresql://${HMS_DB_USER:-hms}:${HMS_DB_PASSWORD:-hms_dev_password_change_me}@postgres:5432/${HMS_DB_NAME:-hms}
+  HMS_API_DATABASE_SCHEMA: ${HMS_API_DATABASE_SCHEMA:-tenant_luna}
+  HMS_API_VECTOR_EXTENSION: pgvector
+  HMS_API_TENANT_EXTENSION: hms_api.extensions.builtin.tenant:ApiKeyTenantExtension
+  HMS_API_TENANT_API_KEY: ${HMS_API_TENANT_API_KEY:-hms_tenant_luna_change_me}
+  HMS_API_RUN_MIGRATIONS_ON_STARTUP: "true"
+  HMS_API_SKIP_LLM_VERIFICATION: ${HMS_API_SKIP_LLM_VERIFICATION:-false}
+  HMS_API_LLM_PROVIDER: ${HMS_API_LLM_PROVIDER:-openai}
+  HMS_API_LLM_MODEL: ${HMS_API_LLM_MODEL:-gpt-4o}
+  HMS_API_LLM_API_KEY: ${HMS_API_LLM_API_KEY:-openai_key_change_me}
+  HMS_API_LLM_BASE_URL: ${HMS_API_LLM_BASE_URL:-}
+  HMS_API_RETAIN_LLM_PROVIDER: ${HMS_API_RETAIN_LLM_PROVIDER:-openai}
+  HMS_API_RETAIN_LLM_MODEL: ${HMS_API_RETAIN_LLM_MODEL:-gpt-4o}
+  HMS_API_RETAIN_LLM_API_KEY: ${HMS_API_RETAIN_LLM_API_KEY:-openai_key_change_me}
+  HMS_API_RETAIN_LLM_BASE_URL: ${HMS_API_RETAIN_LLM_BASE_URL:-}
+  HMS_API_EMBEDDINGS_PROVIDER: ${HMS_API_EMBEDDINGS_PROVIDER:-openai}
+  HMS_API_EMBEDDINGS_OPENAI_MODEL: ${HMS_API_EMBEDDINGS_OPENAI_MODEL:-text-embedding-3-small}
+  HMS_API_EMBEDDINGS_OPENAI_API_KEY: ${HMS_API_EMBEDDINGS_OPENAI_API_KEY:-openai_key_change_me}
+  HMS_API_EMBEDDINGS_OPENAI_BASE_URL: ${HMS_API_EMBEDDINGS_OPENAI_BASE_URL:-}
+  HMS_API_RERANKER_PROVIDER: ${HMS_API_RERANKER_PROVIDER:-rrf}
+
+services:
+  hms-api:
+    build:
+      context: ./vendor/hms
+      dockerfile: docker/hms-api.Dockerfile
+    command: null
+    environment:
+      <<: *hms-real-env
+      HMS_API_HOST: 0.0.0.0
+      HMS_API_PORT: "18080"
+      HMS_API_LOG_LEVEL: ${HMS_API_LOG_LEVEL:-info}
+      HMS_API_LOG_FORMAT: ${HMS_API_LOG_FORMAT:-json}
+      HMS_API_WORKER_ENABLED: "false"
+    healthcheck:
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+  hms-worker:
+    build:
+      context: ./vendor/hms
+      dockerfile: docker/hms-api.Dockerfile
+    restart: unless-stopped
+    command: ["hms-worker", "--http-host", "0.0.0.0", "--http-port", "8889"]
+    environment:
+      <<: *hms-real-env
+      HMS_API_WORKER_ID: hms-worker-1
+      HMS_API_WORKER_HTTP_PORT: "8889"
+      HMS_API_LOG_LEVEL: ${HMS_API_LOG_LEVEL:-info}
+      HMS_API_LOG_FORMAT: ${HMS_API_LOG_FORMAT:-json}
+    depends_on:
+      hms-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8889/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - mp-net
+
+  mp-backend:
+    environment:
+      MP_MEMORY_ENGINE_MODE: real
+      HMS_API_LLM_API_KEY: ${HMS_API_LLM_API_KEY:-openai_key_change_me}
+      HMS_API_RETAIN_LLM_API_KEY: ${HMS_API_RETAIN_LLM_API_KEY:-openai_key_change_me}
+      HMS_API_EMBEDDINGS_OPENAI_API_KEY: ${HMS_API_EMBEDDINGS_OPENAI_API_KEY:-openai_key_change_me}
+    depends_on:
+      hms-api:
+        condition: service_healthy
+      hms-worker:
+        condition: service_healthy

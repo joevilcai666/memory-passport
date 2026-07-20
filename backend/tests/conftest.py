@@ -38,12 +38,15 @@ def _disable_startup_migrations(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _hms_settings(monkeypatch) -> None:
+def _hms_settings(monkeypatch, request: pytest.FixtureRequest) -> None:
     """Point HMS at a stable respx-mockable URL for every test.
 
     Without this the default ``http://localhost:18080`` would be used and respx
     (which mocks ``http://hms-api.test``) wouldn't intercept the call.
     """
+    if request.node.get_closest_marker("hms") or request.node.get_closest_marker("compose"):
+        return
+
     import app.main as main_mod
 
     settings = main_mod.get_settings()

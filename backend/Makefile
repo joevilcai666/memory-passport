@@ -1,12 +1,12 @@
 # Memory Passport backend — developer commands.
-# All targets shell out to docker-compose so the host needs only docker.
+# Targets prefer the Docker Compose plugin and fall back to standalone Compose.
 # Local (non-docker) equivalents are in the README.
 
-DC ?= docker-compose
+DC ?= $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; else echo "docker-compose"; fi)
 MP_RUN ?= $(DC) run --rm mp-backend
 MP_EXEC ?= $(DC) exec mp-backend
 
-.PHONY: help build up down logs ps dev migrate upgrade downgrade seed test lint smoke clean
+.PHONY: help build up down logs ps dev migrate upgrade downgrade seed test lint smoke clean real-up
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -14,8 +14,8 @@ help: ## Show available targets
 build: ## Build all docker images
 	$(DC) build
 
-up: ## Start the full stack (postgres + hms-api + hms-worker + mp-backend)
-	$(DC) up -d
+up: ## Start the credential-free stack (postgres + demo hms-api + mp-backend)
+	$(DC) up -d --remove-orphans
 
 down: ## Stop the stack (keeps volumes)
 	$(DC) down
@@ -55,3 +55,6 @@ smoke: ## The Slice 1 acceptance smoke test: up -> seed -> health
 
 clean: ## Stop and remove containers + volumes (DESTRUCTIVE — wipes DB data)
 	$(DC) down -v
+
+real-up: ## Start the pinned real HMS API and worker overlay
+	$(MAKE) -C .. real-up

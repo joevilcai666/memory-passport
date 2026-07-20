@@ -7,6 +7,7 @@ box against the seeded stack. Override via the `.env` file at the repo root.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,6 +37,22 @@ class Settings(BaseSettings):
     # MP calls hms-api directly over the compose network with this bearer token.
     hms_api_url: str = Field(default="http://localhost:18080", validation_alias="HMS_API_URL")
     hms_api_key: str = Field(default="hms_tenant_luna_change_me", validation_alias="HMS_API_KEY")
+    memory_engine_mode: Literal["demo", "real"] = "demo"
+
+    # Real-HMS mode validates these before the server starts.  They are passed
+    # through to the HMS containers by Compose and never exposed by MP APIs.
+    hms_llm_api_key: str = Field(
+        default="openai_key_change_me",
+        validation_alias="HMS_API_LLM_API_KEY",
+    )
+    hms_retain_llm_api_key: str = Field(
+        default="openai_key_change_me",
+        validation_alias="HMS_API_RETAIN_LLM_API_KEY",
+    )
+    hms_embeddings_api_key: str = Field(
+        default="openai_key_change_me",
+        validation_alias="HMS_API_EMBEDDINGS_OPENAI_API_KEY",
+    )
 
     # ---- Server -----------------------------------------------------------
     host: str = "0.0.0.0"
@@ -68,3 +85,19 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Cached settings singleton."""
     return Settings()
+
+
+def validate_real_hms_configuration(settings: Settings) -> None:
+    """Fail fast when real HMS mode still contains example credentials."""
+    if settings.memory_engine_mode != "real":
+        return
+    credentials = (
+        settings.hms_llm_api_key,
+        settings.hms_retain_llm_api_key,
+        settings.hms_embeddings_api_key,
+    )
+    if any(not value or value.endswith("_change_me") for value in credentials):
+        raise RuntimeError(
+            "real HMS mode requires non-placeholder LLM, retain-LLM, and "
+            "embedding credentials; see docs/real-hms.md"
+        )

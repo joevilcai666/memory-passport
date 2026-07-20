@@ -21,22 +21,16 @@ import app.models  # noqa: F401
 from app.config import get_settings
 from app.db.base import _JSON_DUMPS, Base
 from app.db.session import reset_engine_for_tests
+from tests.service_dependencies import hms_available, postgres_available
 
-
-def _is_postgres() -> bool:
-    return get_settings().database_url.startswith("postgresql")
-
-
-def _hms_is_live() -> bool:
-    # The conftest points hms_api_url at http://hms-api.test (respx-only). The
-    # smoke test only runs when an operator overrides it to a real hms-api URL.
-    return not get_settings().hms_api_url.startswith("http://hms-api.test")
-
-
-pytestmark = pytest.mark.skipif(
-    not (_is_postgres() and _hms_is_live()),
-    reason="ingest smoke test requires Postgres + a live HMS (docker-compose)",
-)
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.hms,
+    pytest.mark.skipif(
+        not (postgres_available() and hms_available()),
+        reason="ingest smoke test requires reachable Postgres and HMS services",
+    ),
+]
 
 
 @pytest.fixture()
@@ -92,6 +86,7 @@ def test_ingest_against_real_hms(pg_app):
     now = _dt.now(tz=UTC)
     with session_scope() as db:
         db.add(Tenant(id="ten_smoke", name="Smoke", plan="Sandbox", created_at=now))
+        db.flush()
         db.add(
             App(
                 id="app_smoke",
@@ -106,17 +101,6 @@ def test_ingest_against_real_hms(pg_app):
             )
         )
         db.add(
-            ApiKey(
-                id="key_smoke",
-                app_id="app_smoke",
-                label="Sandbox",
-                environment="sandbox",
-                key="mp_sandbox_smoke_smoke_smoke_smoke_sm",
-                created_at=now,
-                last_used_at=now,
-            )
-        )
-        db.add(
             User(
                 id="usr_smoke",
                 tenant_id="ten_smoke",
@@ -128,6 +112,18 @@ def test_ingest_against_real_hms(pg_app):
                 created_at=now,
                 display_name="Smoke",
                 avatar_color="#000000",
+            )
+        )
+        db.flush()
+        db.add(
+            ApiKey(
+                id="key_smoke",
+                app_id="app_smoke",
+                label="Sandbox",
+                environment="sandbox",
+                key="mp_sandbox_smoke_smoke_smoke_smoke_sm",
+                created_at=now,
+                last_used_at=now,
             )
         )
         db.add(
