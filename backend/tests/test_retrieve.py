@@ -238,6 +238,51 @@ def _mock_recall(returning_unit_ids: list[str]):
     return handler
 
 
+def test_tombstoned_memory_is_excluded_from_subsequent_retrieve(
+    seeded_for_retrieve, app_client
+):
+    """Slice 5 DELETE removes the join mapping before the next HMS recall."""
+    s = seeded_for_retrieve
+    record, mapping = _make_record(
+        mp_id="mem_delete_then_retrieve",
+        tenant_id=s["tenant_id"],
+        app_id=s["app_id"],
+        user_id=s["user_id"],
+        agent_id=s["agent_id"],
+        rel_id=s["rel_id"],
+        hms_unit_id="hms_delete_then_retrieve",
+        scope=MemoryScope.RELATIONSHIP_ONLY,
+    )
+    _seed_records(s, [(record, mapping)])
+
+    with respx.mock(base_url="http://hms-api.test", assert_all_called=False) as mock:
+        mock.delete(url__regex=r"/v1/default/banks/usr_retr/documents/.*").respond(
+            200, json={"deleted": True}
+        )
+        mock.post(url__regex=r"/v1/default/banks/usr_retr/memories/recall$").mock(
+            side_effect=_mock_recall(["hms_delete_then_retrieve"])
+        )
+        deleted = app_client.delete(
+            "/v1/memories/mem_delete_then_retrieve",
+            headers=auth_headers(s["key"]),
+        )
+        recalled = app_client.post(
+            "/v1/memories/retrieve",
+            headers=auth_headers(s["key"]),
+            json={
+                "user_id": s["user_id"],
+                "agent_id": s["agent_id"],
+                "relationship_id": s["rel_id"],
+                "query": "anything",
+                "model": "test-model",
+            },
+        )
+
+    assert deleted.status_code == 200
+    assert recalled.status_code == 200
+    assert recalled.json()["results"] == []
+
+
 # ---------------------------------------------------------------------------
 # Scope filtering matrix
 # ---------------------------------------------------------------------------

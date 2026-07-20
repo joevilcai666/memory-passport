@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
-from app.models.enums import AuditAction
+from app.models.enums import AuditAction, MemoryStatus
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
@@ -124,6 +124,7 @@ async def retrieve_memories(
             .where(
                 MemoryRecordHmsUnit.hms_unit_id.in_(hms_unit_ids),
                 MemoryRecord.tenant_id == tenant.id,
+                MemoryRecord.status == MemoryStatus.ACTIVE,
             )
         ).all()
         # Preserve HMS's rank order (the recall result order).
