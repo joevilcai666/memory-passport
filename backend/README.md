@@ -1,11 +1,12 @@
-# Memory Passport — Backend (V0.1, Slice 1)
+# Memory Passport — Backend (V0.1)
 
 A Python **FastAPI** domain service that wraps the
 [Holographic Memory System (HMS)](https://github.com/Shadow-Weave/HMS) memory
-engine and implements the Memory Passport data model (PRD v2.0 §7–§11). This
-slice ships the **runnable foundation**: the docker-compose stack, the MP
-Postgres schema, API-key auth, `/v1/health`, and the Luna seed dataset. No
-business endpoints yet — every later slice builds on this.
+engine and implements the Memory Passport data model (PRD v2.0 §7–§11). Slice 1
+shipped the **runnable foundation**: the docker-compose stack, the MP Postgres
+schema, API-key auth, `/v1/health`, and the Luna seed dataset. Slice 2 adds the
+**provisioning endpoints** (apps / agents / users / relationships / devices).
+Every later slice builds on this.
 
 > The Next.js prototype in `../src` is unchanged. The backend lives in
 > `backend/`; the two share a repo but not a process.
@@ -162,6 +163,36 @@ values. `docker-compose up` reads `.env` automatically.
 
 The seed also provisions **one empty HMS bank per user** (`bank_id == user_id`)
 under the `tenant_luna` HMS schema, via `PUT /v1/default/banks/{bank_id}`.
+
+---
+
+## Slice 2 — Provisioning endpoints
+
+The seven `POST` endpoints that create the core entities a memory pipeline
+needs (PRD v2.0 §8). All are under `/v1`, all require
+`Authorization: Bearer mp_<env>_<secret>`, and all return the created entity
+with a generated `id` + timestamps. Each successful creation appends an
+`AuditLog` row (`actor = api:<key_id>`).
+
+| Endpoint | Body (highlights) | Returns |
+|---|---|---|
+| `POST /v1/apps` | `name`, `product_type`, `environment`, `data_region`, `show_powered_by` | `{ app, api_key }` — the new App + its first auto-generated `mp_<env>_<secret>` key (shown once) |
+| `POST /v1/agents` | `app_id`, `name`, `type`, `persona_version`, `allowed_memory_types`, `emoji` | `Agent` |
+| `POST /v1/users` | `app_id`, `external_user_id`, `age_group?`, `region`, `display_name` | `User` — generates `passport_id`; **idempotent** on `(app_id, external_user_id)` and provisions an HMS bank (`bank_id == user_id`) on first sight only |
+| `POST /v1/relationships` | `user_id`, `agent_id`, `device_id?`, `relationship_type`, `memory_enabled?` | `Relationship` |
+| `POST /v1/devices/register` | `model`, `generation`, `serial_number_hash` | `{ device, pairing_code }` — device in `registered` status + a one-time 8-char pairing code |
+| `POST /v1/devices/bind` | `device_id`, `user_id`, `pairing_code` | `Device` — transitions `registered → bound`; **anonymous / code-less binds are rejected** (403) per PRD §9.1 |
+| `POST /v1/devices/unbind` | `device_id` | `Device` — transitions `bound → unbound` |
+
+**Device state machine** — `bind` is only legal from `registered`, `unbind`
+only from `bound`. Any illegal transition returns `409 Conflict` with
+`{ "code": "illegal_state_transition", "current": "...", "action": "..." }`.
+
+**Tenant isolation** — every lookup is scoped to the caller's tenant. A
+reference to another tenant's row returns `404` (not `403`) so existence isn't
+leaked.
+
+`wipe` and `transfer` device operations are deferred to later slices.
 
 ---
 

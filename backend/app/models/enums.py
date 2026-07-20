@@ -148,6 +148,12 @@ class AuditAction(str, enum.Enum):
     MIGRATION_COMPLETED = "migration.completed"
     MIGRATION_STARTED = "migration.started"
     MEMORY_EXPORTED = "memory.exported"
+    # Slice 2 — provisioning actions (one row per successful entity creation).
+    APP_CREATED = "app.created"
+    AGENT_CREATED = "agent.created"
+    USER_CREATED = "user.created"
+    RELATIONSHIP_CREATED = "relationship.created"
+    DEVICE_REGISTERED = "device.registered"
 
 
 class TeamRole(str, enum.Enum):

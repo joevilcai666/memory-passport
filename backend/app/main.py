@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.health import router as health_router
+from app.api.v1 import router as v1_router
 from app.auth import auth_middleware
 from app.config import get_settings
 
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(auth_middleware)
 
     app.include_router(health_router)
+    app.include_router(v1_router)
 
     # Convenience root redirect to docs — useful when poking the dev server.
     if settings.log_level.lower() in ("debug", "info"):

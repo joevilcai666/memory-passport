@@ -244,7 +244,12 @@ export type AuditAction =
   | "device.unbound"
   | "migration.completed"
   | "migration.started"
-  | "memory.exported";
+  | "memory.exported"
+  | "app.created"
+  | "agent.created"
+  | "user.created"
+  | "relationship.created"
+  | "device.registered";
 
 export interface AuditLog {
   id: ID;
