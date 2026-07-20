@@ -80,6 +80,14 @@ def new_audit_id() -> str:
     return _token("al")
 
 
+def new_policy_id() -> str:
+    return _token("pol")
+
+
+def new_rule_id() -> str:
+    return _token("rule")
+
+
 def new_pairing_code() -> str:
     """8-char alphanumeric one-time code for device bind authorization."""
     # Rejection-sample from the url-safe alphabet so the code is unambiguous

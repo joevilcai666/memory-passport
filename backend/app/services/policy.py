@@ -131,12 +131,12 @@ def resolve_policy(db: Session, agent_id: str) -> ResolvedPolicy | None:
         policy = db.scalar(
             select(MemoryPolicy).where(MemoryPolicy.id == row.memory_policy_id)
         )
-        if policy is not None:
-            rules = (
-                db.scalars(
-                    select(AutoWriteRule).where(AutoWriteRule.policy_id == policy.id)
-                ).all()
-            )
+    if policy is None:
+        policy = db.scalar(select(MemoryPolicy).where(MemoryPolicy.agent_id == agent_id))
+    if policy is not None:
+        rules = db.scalars(
+            select(AutoWriteRule).where(AutoWriteRule.policy_id == policy.id)
+        ).all()
 
     return ResolvedPolicy(
         policy=policy,
@@ -214,6 +214,22 @@ def _match_rule(
     # Fall back to any rule matching the sensitivity (covers the case where the
     # inferred memory_type isn't in the rule set but the sensitivity is).
     return next((r for r in rules if r.sensitivity == sensitivity), None)
+
+
+def match_auto_write_rule(
+    policy: ResolvedPolicy,
+    memory_type: MemoryType,
+    sensitivity: MemorySensitivity,
+) -> AutoWriteAction:
+    """Return the live matching action or the conservative default action."""
+    rule = _match_rule(policy.rules, memory_type, sensitivity)
+    if rule is not None:
+        return rule.action
+    return (
+        AutoWriteAction.BLOCK
+        if sensitivity == MemorySensitivity.S3
+        else AutoWriteAction.AUTO_WRITE
+    )
 
 
 def status_for_sensitivity(sensitivity: MemorySensitivity, action: AutoWriteAction) -> MemoryStatus:
