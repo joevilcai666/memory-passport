@@ -130,6 +130,7 @@ class MigrationStatus(str, enum.Enum):
     COMPLETED = "completed"
     COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
 
 
 class OldDeviceAccess(str, enum.Enum):
@@ -147,6 +148,7 @@ class AuditAction(str, enum.Enum):
     DEVICE_UNBOUND = "device.unbound"
     MIGRATION_COMPLETED = "migration.completed"
     MIGRATION_STARTED = "migration.started"
+    MIGRATION_ROLLED_BACK = "migration.rolled_back"
     MEMORY_EXPORTED = "memory.exported"
     # Slice 2 — provisioning actions (one row per successful entity creation).
     APP_CREATED = "app.created"

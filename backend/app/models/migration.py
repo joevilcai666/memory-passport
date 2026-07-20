@@ -50,12 +50,15 @@ class Migration(Base):
     # user intent at preview time, not a query target.
     selected_memory_ids: Mapped[list[Any]] = mapped_column(jsonb(), nullable=False, default=list)
     skipped_memory_ids: Mapped[list[Any]] = mapped_column(jsonb(), nullable=False, default=list)
+    failed_memory_ids: Mapped[list[Any]] = mapped_column(jsonb(), nullable=False, default=list)
+    rollback_snapshot: Mapped[dict[str, Any]] = mapped_column(jsonb(), nullable=False, default=dict)
 
     old_device_access: Mapped[OldDeviceAccess] = mapped_column(PG_OLD_DEVICE_ACCESS, nullable=False)
     audit_log_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     def __repr__(self) -> str:
         return f"<Migration {self.id} ({self.status})>"

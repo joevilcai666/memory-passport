@@ -212,7 +212,8 @@ export type MigrationStatus =
   | "running"
   | "completed"
   | "completed_with_warnings"
-  | "failed";
+  | "failed"
+  | "rolled_back";
 
 export type OldDeviceAccess = "keep" | "remove";
 
@@ -226,10 +227,12 @@ export interface Migration {
   status: MigrationStatus;
   selected_memory_ids: ID[];
   skipped_memory_ids: ID[];
+  failed_memory_ids: ID[];
   old_device_access: OldDeviceAccess;
   audit_log_id: ID | null;
   created_at: string;
   completed_at: string | null;
+  rolled_back_at: string | null;
 }
 
 // ---- Audit Log ------------------------------------------------------------
@@ -244,6 +247,7 @@ export type AuditAction =
   | "device.unbound"
   | "migration.completed"
   | "migration.started"
+  | "migration.rolled_back"
   | "memory.exported"
   | "app.created"
   | "agent.created"

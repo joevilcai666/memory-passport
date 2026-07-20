@@ -88,6 +88,10 @@ def new_rule_id() -> str:
     return _token("rule")
 
 
+def new_migration_id() -> str:
+    return _token("mig")
+
+
 def new_pairing_code() -> str:
     """8-char alphanumeric one-time code for device bind authorization."""
     # Rejection-sample from the url-safe alphabet so the code is unambiguous

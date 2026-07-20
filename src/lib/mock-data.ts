@@ -1098,10 +1098,12 @@ export const seedMigration: Migration = {
   status: "preview",
   selected_memory_ids: [],
   skipped_memory_ids: [],
+  failed_memory_ids: [],
   old_device_access: "remove",
   audit_log_id: null,
   created_at: hoursAgo(2),
   completed_at: null,
+  rolled_back_at: null,
 };
 
 // ---- Team -----------------------------------------------------------------

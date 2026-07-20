@@ -406,10 +406,13 @@ def migration() -> dict:
         "status": "preview",
         "selected_memory_ids": [],
         "skipped_memory_ids": [],
+        "failed_memory_ids": [],
+        "rollback_snapshot": {},
         "old_device_access": "remove",
         "audit_log_id": None,
         "created_at": hours_ago(2),
         "completed_at": None,
+        "rolled_back_at": None,
     }
 
 
