@@ -1,12 +1,15 @@
-"""Device provisioning endpoints — register / bind / unbind.
+"""Device provisioning endpoints — register / bind / unbind / wipe.
 
-State machine (PRD §9.1):
+State machine (PRD §9.1, §10.2 V0.1 subset):
 
     registered --bind-->   bound    --unbind--> unbound
+                          bound    --wipe----> wiped     (Slice 7)
 
 ``bind`` requires the one-time pairing code issued at ``register`` (anonymous or
-code-less binds are rejected with 403). ``wipe`` and ``transfer`` are deferred
-to later slices. Each transition writes an AuditLog row.
+code-less binds are rejected with 403). ``wipe`` factory-resets a bound device,
+tombstones its device_only memories, and revokes its read authorization.
+``transfer`` / ``repair_mode`` are P1, out of scope. Each transition writes an
+AuditLog row.
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ from app.schemas.provisioning import (
     DeviceRegisterResponse,
     DeviceResponse,
     DeviceUnbindRequest,
+    DeviceWipeRequest,
+    DeviceWipeResponse,
 )
 from app.services import provisioning
 
@@ -77,3 +82,17 @@ def unbind_device(
     device = provisioning.unbind_device(db, tenant, device_id=body.device_id)
     db.commit()
     return DeviceResponse.model_validate(device)
+
+
+@router.post("/wipe", response_model=DeviceWipeResponse, status_code=status.HTTP_200_OK)
+def wipe_device(
+    body: DeviceWipeRequest,
+    db: Session = DbDep,
+    tenant=TenantDep,
+) -> DeviceWipeResponse:
+    device, tombstoned = provisioning.wipe_device(db, tenant, device_id=body.device_id)
+    db.commit()
+    return DeviceWipeResponse(
+        device=DeviceResponse.model_validate(device),
+        tombstoned_memories=tombstoned,
+    )

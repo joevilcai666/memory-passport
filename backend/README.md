@@ -183,22 +183,90 @@ with a generated `id` + timestamps. Each successful creation appends an
 | `POST /v1/devices/register` | `model`, `generation`, `serial_number_hash` | `{ device, pairing_code }` — device in `registered` status + a one-time 8-char pairing code |
 | `POST /v1/devices/bind` | `device_id`, `user_id`, `pairing_code` | `Device` — transitions `registered → bound`; **anonymous / code-less binds are rejected** (403) per PRD §9.1 |
 | `POST /v1/devices/unbind` | `device_id` | `Device` — transitions `bound → unbound` |
+| `POST /v1/devices/wipe` | `device_id` | `{ device, tombstoned_memories }` — transitions `bound → wiped`; tombstones the device's `device_only` memories (Slice 7) |
 
 **Device state machine** — `bind` is only legal from `registered`, `unbind`
-only from `bound`. Any illegal transition returns `409 Conflict` with
+only from `bound`, `wipe` only from `bound`. Any illegal transition returns
+`409 Conflict` with
 `{ "code": "illegal_state_transition", "current": "...", "action": "..." }`.
 
 **Tenant isolation** — every lookup is scoped to the caller's tenant. A
 reference to another tenant's row returns `404` (not `403`) so existence isn't
 leaked.
 
-`wipe` and `transfer` device operations are deferred to later slices.
+`transfer` / `repair_mode` device operations are deferred (P1).
+
+---
+
+## Slice 3 — Ingest (`POST /v1/events/ingest`)
+
+The architecture-validating tracer — the first slice that exercises the
+MP↔HMS contract end-to-end. Accepts a raw event, resolves the user/agent/
+relationship/device context, runs the app's `MemoryPolicy` auto-write rules,
+then calls **HMS `retain`** (`bank_id = user_id`) to do fact extraction +
+embedding + dedup. Each extracted HMS fact is mirrored as an MP
+`MemoryRecord` carrying the rich domain fields HMS doesn't know about
+(`sensitivity`, `portability`, `scope`, `source.quote`, `model_provenance`).
+
+| Endpoint | Body (highlights) | Returns |
+|---|---|---|
+| `POST /v1/events/ingest` | `user_id`, `agent_id`, `relationship_id`, `device_id?`, `source_type`, `content`, `quote?`, `event_id?` | `{ event_id, results: [{ id, action }] }` — action ∈ `ADD`/`UPDATE`/`NOOP`/`BLOCKED` |
+
+**Sensitivity → action (PRD §7):** S0/S1 → `active` (auto-write); S2 →
+`candidate` (visible in console, not in retrieve by default); S3 → **blocked
+end-to-end** (no HMS call, no MP record, `memory.blocked` audit only).
+
+**HMS failure** (5xx/timeout) → `502 hms_retain_failed` + rollback (no partial
+MP rows).
+
+---
+
+## Slice 4 — Retrieve + debug traces
+
+The read-side counterpart to Slice 3. Given a query + a user/agent/device
+context, calls **HMS `recall`** (`bank_id = user_id`), joins the results back
+to MP `MemoryRecord`s via the Slice 3 mapping table, applies the scope matrix
++ sensitivity masking, and appends a `RetrievalEvent` to each returned memory's
+`model_provenance.retrieval_history` (the cross-model parity moat, PRD §9.4).
+
+| Endpoint | Body / param | Returns |
+|---|---|---|
+| `POST /v1/memories/retrieve` | `user_id`, `agent_id`, `relationship_id`, `device_id?`, `query`, `model?` | `{ trace_id, results: [RetrievedMemory] }` |
+| `GET /v1/debug/traces/{trace_id}` | — | the full retrieval event chain (query, HMS results, projected records, retrieval events) |
+
+**Scope matrix (PRD §9.1):** `blocked` → never; `private` → only the
+originating agent; `device_only` → only the bound device AND device.status ==
+`bound` (a **wiped** device loses access — ties into Slice 7); `agent_only` →
+only that agent; `relationship_only` → only within the relationship;
+`user_global` → any of the user's relationships.
+
+**Sensitivity masking:** when
+`policy.retrieval.include_sensitive_in_prompt == false`, S2/S3 content is
+projected as `[redacted]` (the DB row is untouched).
+
+**Cap:** at most `policy.retrieval.max_memories_per_response` records.
+
+Traces persist for ≥7 days (PRD §8 P0); V0.1 enforces this by row age.
+
+---
+
+## Slice 7 — Device wipe (`POST /v1/devices/wipe`)
+
+The privacy-positive "factory reset" path (PRD §8). Transitions a `bound`
+device to `wiped`, clears `bound_user_id` (revoking its read authorization
+end-to-end), and tombstones every `device_only`-scoped memory tied to it
+(`status = deleted`, soft-delete per PRD §9.1). Memories in other scopes
+(`user_global`, `relationship_only`, …) on the same device are untouched.
+
+Post-wipe retrieve rejection is enforced by Slice 4's scope matrix: a wiped
+device's `device_only` memories are filtered out (`is_readable` requires
+`caller_device_status == 'bound'`).
 
 ---
 
 ## What this slice does NOT include (deferred)
 
-- Real Ingest/Retrieve/Migration endpoints (PRD §7.7–§7.9). Only `/v1/health` ships.
+- Device `transfer` / `repair_mode` states (P1 per the PRD).
 - A custom HMS `TenantExtension` mapping multiple MP tenants to multiple HMS
   schemas. Slice 1 has exactly one tenant and uses HMS's built-in
   `ApiKeyTenantExtension` with `HMS_API_DATABASE_SCHEMA=tenant_luna`. See

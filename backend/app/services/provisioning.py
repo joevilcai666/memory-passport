@@ -24,13 +24,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.errors import conflict_illegal_state, forbidden, not_found
 from app.auth import TenantContext
-from app.models.enums import AuditAction, DeviceStatus
+from app.models.enums import AuditAction, DeviceStatus, MemoryScope, MemoryStatus
 from app.models.identity import Agent, Device, Relationship, User
+from app.models.memory import MemoryRecord
 from app.models.tenant import ApiKey, App
 from app.services.audit import api_actor, write_audit
 from app.services.ids import (
@@ -455,5 +456,71 @@ def unbind_device(db: Session, context: TenantContext, *, device_id: str) -> Dev
         ),
     )
     return device
+
+
+def wipe_device(
+    db: Session,
+    context: TenantContext,
+    *,
+    device_id: str,
+) -> tuple[Device, int]:
+    """Factory-reset a bound device (PRD §8 ``POST /v1/devices/wipe``).
+
+    State machine: ``bound -> wiped`` (only legal from ``bound``; anything else
+    is a 409 ``illegal_state_transition``).
+
+    Side effects:
+    1. Tombstone every ``device_only``-scoped MemoryRecord tied to this device
+       (``status = deleted``). Memories in other scopes (``user_global``,
+       ``relationship_only``, …) on the same device are **untouched** — only
+       what lived solely on this device is destroyed. Tombstoning (soft-delete)
+       honours PRD §9.1's tombstone rule (no hard deletes).
+    2. ``device.status = wiped``; clear ``bound_user_id`` (revoke the device's
+       read authorization end-to-end); set ``last_seen_at``.
+    3. One ``AuditLog(action=device.wiped)`` row capturing the count.
+
+    Retrieve-rejection is enforced by Slice 4's scope matrix: a wiped device's
+    ``device_only`` memories are filtered out (``is_readable`` requires
+    ``caller_device_status == 'bound'``).
+
+    Returns ``(device, tombstoned_count)``.
+    """
+    tenant = context.tenant
+    device = _get_device_in_tenant(db, tenant.id, device_id)
+
+    if device.status != DeviceStatus.BOUND:
+        raise conflict_illegal_state(current=device.status.value, action="wipe")
+
+    # Tombstone device_only memories on this device (status != deleted already).
+    # rowcount tells us how many were affected.
+    result = db.execute(
+        update(MemoryRecord)
+        .where(
+            MemoryRecord.device_id == device.id,
+            MemoryRecord.scope == MemoryScope.DEVICE_ONLY,
+            MemoryRecord.status != MemoryStatus.DELETED,
+        )
+        .values(status=MemoryStatus.DELETED)
+    )
+    tombstoned = int(result.rowcount or 0)
+
+    previous_user = device.bound_user_id
+    device.status = DeviceStatus.WIPED
+    device.bound_user_id = None
+    device.last_seen_at = _now()
+    db.flush()
+
+    write_audit(
+        db,
+        tenant_id=tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.DEVICE_WIPED,
+        target=device.id,
+        detail=(
+            f"Wiped Device (previously bound to {previous_user}); "
+            f"tombstoned {tombstoned} device_only memories"
+        ),
+    )
+    return device, tombstoned
 
 

@@ -209,6 +209,12 @@ class DeviceUnbindRequest(BaseModel):
     device_id: ID
 
 
+class DeviceWipeRequest(BaseModel):
+    """POST /v1/devices/wipe — factory-reset a bound device."""
+
+    device_id: ID
+
+
 # ---------------------------------------------------------------------------
 # Composite responses
 # ---------------------------------------------------------------------------
@@ -228,6 +234,13 @@ class DeviceRegisterResponse(BaseModel):
     pairing_code: str
 
 
+class DeviceWipeResponse(BaseModel):
+    """POST /v1/devices/wipe returns the wiped device + tombstone count."""
+
+    device: DeviceResponse
+    tombstoned_memories: int
+
+
 __all__ = [
     "AgentCreateRequest",
     "AgentResponse",
@@ -240,6 +253,8 @@ __all__ = [
     "DeviceRegisterResponse",
     "DeviceResponse",
     "DeviceUnbindRequest",
+    "DeviceWipeRequest",
+    "DeviceWipeResponse",
     "RelationshipCreateRequest",
     "RelationshipResponse",
     "TenantResponse",
