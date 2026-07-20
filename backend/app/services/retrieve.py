@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
-from app.models.enums import AuditAction, MemoryStatus, UsageOperation
+from app.models.enums import AuditAction, MemoryStatus, PassportStatus, UsageOperation
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
@@ -79,6 +79,17 @@ async def retrieve_memories(
 
     # 1. Resolve caller context in-tenant.
     user = _get_user_in_tenant(db, tenant.id, user_id)
+    if user.passport_status == PassportStatus.DELETED:
+        return _deleted_passport_outcome(
+            db,
+            context,
+            user_id=user_id,
+            agent_id=agent_id,
+            relationship_id=relationship_id,
+            device_id=device_id,
+            query=query,
+            model=model,
+        )
     _get_agent_in_tenant(db, tenant.id, agent_id)
     _get_relationship_in_tenant(db, tenant.id, relationship_id)
     device_status: str | None = None
@@ -213,6 +224,60 @@ async def retrieve_memories(
         hms_results={"results": hms_results_list},
         retrieval_events={"events": retrieval_events_by_id},
         caller=caller_ctx,
+    )
+
+
+def _deleted_passport_outcome(
+    db: Session,
+    context: TenantContext,
+    *,
+    user_id: str,
+    agent_id: str,
+    relationship_id: str,
+    device_id: str | None,
+    query: str,
+    model: str,
+) -> RetrieveOutcome:
+    """Trace an empty result without contacting HMS for a deleted passport."""
+    now = _now()
+    trace_id = new_trace_id()
+    caller = {
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "relationship_id": relationship_id,
+        "device_id": device_id,
+        "device_status": None,
+        "model": model,
+        "passport_status": PassportStatus.DELETED.value,
+    }
+    empty_results = {"results": []}
+    db.add(
+        RetrievalTrace(
+            id=trace_id,
+            tenant_id=context.tenant.id,
+            query=query,
+            caller=caller,
+            hms_results=empty_results,
+            projected=empty_results,
+            retrieval_events={"events": {}},
+            created_at=now,
+        )
+    )
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.RETRIEVAL_PERFORMED,
+        target=trace_id,
+        detail=f"Skipped HMS recall for deleted passport user {user_id}",
+    )
+    write_usage(db, context.tenant.id, user_id, UsageOperation.RETRIEVE, now)
+    return RetrieveOutcome(
+        trace_id=trace_id,
+        projected=[],
+        hms_results=empty_results,
+        retrieval_events={"events": {}},
+        caller=caller,
     )
 
 

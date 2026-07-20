@@ -48,6 +48,8 @@ export interface User {
   id: ID;
   external_user_id: string;
   passport_id: string; // user-ownership anchor
+  passport_status?: "active" | "deleted";
+  passport_deleted_at?: string | null;
   age_group: AgeGroup;
   region: string;
   memory_enabled: boolean;
@@ -256,7 +258,8 @@ export type AuditAction =
   | "device.registered"
   | "memory.blocked"
   | "retrieval.performed"
-  | "device.wiped";
+  | "device.wiped"
+  | "user.deleted";
 
 export interface AuditLog {
   id: ID;

@@ -96,6 +96,10 @@ def new_usage_id() -> str:
     return _token("use")
 
 
+def new_export_id() -> str:
+    return _token("exp")
+
+
 def new_pairing_code() -> str:
     """8-char alphanumeric one-time code for device bind authorization."""
     # Rejection-sample from the url-safe alphabet so the code is unambiguous

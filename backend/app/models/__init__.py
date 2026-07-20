@@ -5,6 +5,7 @@ Alembic's ``env.py`` introspects for autogenerate.
 """
 
 from app.models.audit import AuditLog
+from app.models.export import ExportJob
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import AutoWriteRule, MemoryPolicy, MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
@@ -20,6 +21,7 @@ __all__ = [
     "AuditLog",
     "AutoWriteRule",
     "Device",
+    "ExportJob",
     "Migration",
     "MemoryPolicy",
     "MemoryRecord",

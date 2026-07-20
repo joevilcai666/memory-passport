@@ -45,6 +45,7 @@ yarn-error.log*
 
 # docker volumes (gitignored; recreated by docker-compose up)
 /volumes/
+/var/exports/
 
 # local agent/IDE session workspace (not part of the repo)
 .zcode/

@@ -69,6 +69,7 @@ const auditMeta: Partial<Record<AuditAction, AuditMeta>> = {
   "migration.started": { label: "migration.started", Icon: History, tint: "bg-emerald-500/10", color: "text-emerald-600 dark:text-emerald-400" },
   "migration.completed": { label: "migration.completed", Icon: History, tint: "bg-emerald-500/10", color: "text-emerald-600 dark:text-emerald-400" },
   "memory.exported": { label: "memory.exported", Icon: Download, tint: "bg-amber-500/10", color: "text-amber-600 dark:text-amber-400" },
+  "user.deleted": { label: "user.deleted", Icon: Trash2, tint: "bg-rose-500/10", color: "text-rose-600 dark:text-rose-400" },
 };
 
 function metaForAudit(action: AuditAction): AuditMeta {

@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # "valid sandbox key authenticates" acceptance test holds.
     seed_api_key: str = "mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd"
 
+    # ---- Model-neutral exports -------------------------------------------
+    export_dir: str = "/tmp/memory-passport-exports"
+    export_token_ttl_seconds: int = 900
+
     @property
     def async_database_url(self) -> str:
         """DATABASE_URL rewritten for SQLAlchemy's async driver.

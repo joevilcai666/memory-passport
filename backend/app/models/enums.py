@@ -145,6 +145,17 @@ class UsageOperation(str, enum.Enum):
     DELETE = "delete"
 
 
+class PassportStatus(str, enum.Enum):
+    ACTIVE = "active"
+    DELETED = "deleted"
+
+
+class ExportStatus(str, enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class AuditAction(str, enum.Enum):
     MEMORY_CREATED = "memory.created"
     MEMORY_DELETED = "memory.deleted"
@@ -167,6 +178,7 @@ class AuditAction(str, enum.Enum):
     MEMORY_BLOCKED = "memory.blocked"  # S3 event blocked end-to-end (no HMS call)
     RETRIEVAL_PERFORMED = "retrieval.performed"
     DEVICE_WIPED = "device.wiped"
+    USER_DELETED = "user.deleted"
 
 
 class TeamRole(str, enum.Enum):
@@ -218,6 +230,8 @@ PG_AUTOWRITE_ACTION = _pg_enum(AutoWriteAction, "autowrite_action")
 PG_MIGRATION_STATUS = _pg_enum(MigrationStatus, "migration_status")
 PG_OLD_DEVICE_ACCESS = _pg_enum(OldDeviceAccess, "old_device_access")
 PG_USAGE_OPERATION = _pg_enum(UsageOperation, "usage_operation")
+PG_PASSPORT_STATUS = _pg_enum(PassportStatus, "passport_status")
+PG_EXPORT_STATUS = _pg_enum(ExportStatus, "export_status")
 PG_AUDIT_ACTION = _pg_enum(AuditAction, "audit_action")
 PG_TEAM_ROLE = _pg_enum(TeamRole, "team_role")
 PG_SOURCE_TYPE = _pg_enum(SourceType, "source_type")

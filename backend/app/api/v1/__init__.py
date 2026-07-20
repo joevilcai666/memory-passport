@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from app.api.v1.agents import router as agents_router
 from app.api.v1.aggregates import router as aggregates_router
 from app.api.v1.apps import router as apps_router
+from app.api.v1.data_ops import router as data_ops_router
 from app.api.v1.debug import router as debug_router
 from app.api.v1.devices import router as devices_router
 from app.api.v1.events import router as events_router
@@ -22,6 +23,7 @@ from app.api.v1.users import router as users_router
 
 router = APIRouter()
 router.include_router(aggregates_router)
+router.include_router(data_ops_router)
 router.include_router(apps_router)
 router.include_router(agents_router)
 router.include_router(users_router)

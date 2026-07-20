@@ -15,11 +15,13 @@ from app.models.enums import (
     PG_AGE_GROUP,
     PG_AGENT_TYPE,
     PG_DEVICE_STATUS,
+    PG_PASSPORT_STATUS,
     PG_RELATIONSHIP_TYPE,
     AgeGroup,
     AgentType,
     DeviceStatus,
     MemoryType,
+    PassportStatus,
     RelationshipType,
 )
 
@@ -35,6 +37,10 @@ class User(Base):
     )
     external_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     passport_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    passport_status: Mapped[PassportStatus] = mapped_column(
+        PG_PASSPORT_STATUS, nullable=False, default=PassportStatus.ACTIVE
+    )
+    passport_deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
     age_group: Mapped[AgeGroup] = mapped_column(
         PG_AGE_GROUP, nullable=False, default=AgeGroup.UNKNOWN
     )
