@@ -2,6 +2,9 @@
 
 > Switch devices, not relationships. Switch models, not memory.
 
+**B 端客户第一次安装和验收，请直接阅读：**
+[`Memory Passport B 端客户安装与验收指南（中文）`](B2B_CUSTOMER_GUIDE.zh-CN.md)
+
 Memory Passport is an open-source, user-owned memory layer for AI companions
 and robots. This repository contains a Next.js product prototype and a complete
 FastAPI backend with tenant isolation, policy enforcement, versioned memory
@@ -16,8 +19,10 @@ when valid LLM and embedding credentials are supplied.
 
 ## Run it locally
 
-Requirements: Docker Desktop/Engine with either `docker compose` or
-`docker-compose`, Node.js 22+, pnpm 10+, and Git.
+Requirements for the API demo: Docker Desktop/Engine with either
+`docker compose` or `docker-compose`, Git, Make, curl, and Python 3. Node.js
+22+ and pnpm 10+ are only required for the optional frontend and frontend
+release checks.
 
 ```bash
 git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
