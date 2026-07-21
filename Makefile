@@ -1,6 +1,6 @@
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; else echo "docker-compose"; fi)
 
-.PHONY: help build demo up down clean seed check real-config real-up real-down
+.PHONY: help build demo up down clean seed check real-config real-up real-down tls-up tls-down backup restore
 
 help: ## Show local evaluator commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -47,3 +47,16 @@ real-up: real-config ## Start the pinned real HMS API/worker stack
 
 real-down: ## Stop the real-HMS overlay stack and preserve data
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.real.yml down
+
+tls-up: ## Start the stack behind the Caddy TLS reverse proxy (requires MP_PUBLIC_DOMAIN)
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml up -d --wait --remove-orphans
+
+tls-down: ## Stop the TLS overlay stack and preserve data
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.tls.yml down
+
+backup: ## Dump both databases to ./backups/<timestamp>/ (see scripts/backup.sh)
+	./scripts/backup.sh
+
+restore: ## Restore a backup snapshot — USAGE: make restore STAMP=<timestamp>  (or STAMP=./path)
+	@if [ -z "$(STAMP)" ]; then echo "Usage: make restore STAMP=20260721T020000Z" >&2; exit 1; fi
+	./scripts/restore.sh "$(STAMP)"

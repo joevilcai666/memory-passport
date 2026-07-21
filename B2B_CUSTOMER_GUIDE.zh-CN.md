@@ -278,7 +278,11 @@ docker compose -f docker-compose.yml -f docker-compose.real.yml \
 
 仓库中的沙盒 key、示例数据库密码和 Luna 数据只能用于本地验收。进入试生产或
 生产之前，客户还需要完成独立密钥、TLS/域名、持久化备份、监控告警、密钥轮换、
-访问控制及本地区域/合规评审。当前网页端是交互原型；B 端正式集成应以 API 为准。
+访问控制及本地区域/合规评审。仓库已经附带了可参照的加固材料
+（Caddy 反向代理 overlay、`scripts/backup.sh` / `scripts/restore.sh`、
+参数化的数据库密码），完整清单与操作步骤见
+[`docs/production-hardening.md`](docs/production-hardening.md)。当前网页端是交互原型；
+B 端正式集成应以 API 为准。
 
 ## 9. 停止、重启和彻底重置
 

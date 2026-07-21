@@ -1,0 +1,57 @@
+# Memory Passport reverse-proxy reference (Caddy 2).
+#
+# Terminates TLS in front of mp-backend and keeps hms-api strictly internal
+# (no published port — only the compose network can reach it). This is the
+# shape called for by docs/production-hardening.md.
+#
+# Two modes, selected by MP_PUBLIC_DOMAIN in the environment:
+#
+#  * Real domain (e.g. MP_PUBLIC_DOMAIN=passport.example.com):
+#      Caddy auto-provisions and renews a Let's Encrypt certificate. Requires
+#      ports 80 + 443 to be reachable from the internet and DNS pointing here.
+#
+#  * Local / LAN only (MP_PUBLIC_DOMAIN=passport.local, or any non-public name):
+#      Caddy issues an internal CA certificate (install Caddy's root cert on
+#      clients once) — no public DNS or open ports needed. Great for a POC
+#      shared inside a VPN/LAN.
+#
+# Either way the browser hits https://<MP_PUBLIC_DOMAIN> and Caddy forwards to
+# the mp-backend container over plain HTTP on the private compose network.
+#
+# Optional global block. To receive Let's Encrypt expiry/renewal notices on a
+# public deployment, uncomment the email line and set MP_ACME_EMAIL:
+# {
+#     email {$MP_ACME_EMAIL}
+# }
+
+# The public front door. mp-backend listens on 8000 inside the compose network
+# (see docker-compose.yml), so we reverse-proxy there without TLS — the traffic
+# never leaves the Docker bridge.
+{$MP_PUBLIC_DOMAIN} {
+	encode gzip zstd
+
+	# Long-running exports can stream large JSON; allow generous timeouts so
+	# downloads + the migration preview endpoints are not cut off at the proxy.
+	reverse_proxy mp-backend:8000 {
+		transport http {
+			read_timeout 5m
+			write_timeout 5m
+		}
+	}
+
+	# Basic security headers. CSP is intentionally not set here — the Next.js
+	# app owns its own CSP via next.config; only add cross-origin / transport
+	# hardening at this layer.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

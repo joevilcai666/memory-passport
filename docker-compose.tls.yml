@@ -1,0 +1,55 @@
+# TLS / reverse-proxy overlay — production-shape front door.
+#
+# Usage (see docs/production-hardening.md):
+#   MP_PUBLIC_DOMAIN=passport.example.com MP_ACME_EMAIL=ops@example.com \
+#     make tls-up
+#
+# What this overlay does:
+#   * Adds a `caddy` service that terminates TLS and fronts `mp-backend`.
+#   * Drops the host port binding from `mp-backend` so only Caddy exposes it.
+#   * Adds the `caddy` external network + publishes 80/443 for ACME.
+#
+# What this overlay does NOT do:
+#   * It does NOT touch `hms-api` — that service already stays loopback-only in
+#     docker-compose.yml and is reachable from `mp-backend` over the compose
+#     network. For a production deployment you typically want to remove even the
+#     loopback publish; see docs/production-hardening.md §Access control.
+#   * It does NOT rotate secrets — bring real DB / API key values via .env or a
+#     secrets manager before enabling this overlay.
+#
+# This overlay is compose-config-compatible with both `docker-compose.yml`
+# (demo) and the real-HMS stack (`docker-compose.real.yml`). Apply it last:
+#   docker compose -f docker-compose.yml [-f docker-compose.real.yml] \
+#     -f docker-compose.tls.yml up -d
+name: memory-passport
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      MP_PUBLIC_DOMAIN: ${MP_PUBLIC_DOMAIN:?MP_PUBLIC_DOMAIN is required (e.g. passport.example.com)}
+    depends_on:
+      mp-backend:
+        condition: service_healthy
+    networks:
+      - mp-net
+
+  mp-backend:
+    # Remove the loopback host port binding — Caddy is now the only front door.
+    ports: !reset []
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  mp-net:
+    driver: bridge

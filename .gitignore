@@ -47,6 +47,9 @@ yarn-error.log*
 /volumes/
 /var/exports/
 
+# operator backups (scripts/backup.sh writes here by default)
+/backups/
+
 # local agent/IDE session workspace (not part of the repo)
 .zcode/
 
