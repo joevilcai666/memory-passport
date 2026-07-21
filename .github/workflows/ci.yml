@@ -1,0 +1,80 @@
+# Memory Passport CI — mirrors the first four steps of `make check`.
+#
+# What this runs (unit-only, fast):
+#   1. pnpm install (frozen lockfile)
+#   2. pnpm lint
+#   3. pnpm build
+#   4. ruff check app tests
+#   5. pytest -m 'not postgres and not hms and not compose'
+#
+# What this does NOT run (local-only, per issue #15):
+#   - the Docker Compose stack (steps 5–6 of `make check`) — those require a
+#     running postgres + hms-api and the full image build. `make check` remains
+#     the authoritative gate for that integration coverage.
+#
+# The vendor/hms submodule is checked out (submodules: recursive) so a future
+# real-HMS build step works without extra plumbing; it is unused by unit tests.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Lint, build & unit test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with vendor/hms submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ---- Frontend (Next.js 16 + React 19) --------------------------------
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # No version pin: reads packageManager from package.json if present,
+        # otherwise falls back to the action's bundled default.
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend lint
+        run: pnpm lint
+
+      - name: Frontend build
+        run: pnpm build
+
+      # ---- Backend (FastAPI + SQLAlchemy) ----------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[dev]"
+
+      - name: Ruff lint
+        working-directory: backend
+        run: ruff check app tests
+
+      - name: Unit tests (exclude integration markers)
+        working-directory: backend
+        run: pytest -m 'not postgres and not hms and not compose' -q

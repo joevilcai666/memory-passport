@@ -33,6 +33,10 @@ check: ## Run frontend, backend, and running-stack checks locally
 	cd backend && .venv/bin/pytest -m 'not postgres and not hms and not compose' -q
 	$(COMPOSE) up -d --wait --remove-orphans
 	$(COMPOSE) exec -T mp-backend pytest -q
+	@echo ""
+	@echo "Note: steps 1-4 (lint/build/ruff/unit pytest) also run in GitHub Actions"
+	@echo "      (.github/workflows/ci.yml). The compose integration above (steps 5-6)"
+	@echo "      stays local — it needs a running stack. See issue #15."
 
 real-config: ## Validate credentials and render the real-HMS Compose overlay
 	./scripts/validate-real-hms-env.sh
