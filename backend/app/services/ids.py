@@ -131,3 +131,24 @@ def new_api_key(environment: str) -> str:
     env_segment = "live" if environment == "production" else environment
     secret = secrets.token_urlsafe(_APIKEY_SECRET_BYTES)
     return f"mp_{env_segment}_{secret}"
+
+
+def new_hms_key() -> str:
+    """Per-tenant HMS bearer token (issue #12 multi-tenancy).
+
+    Format ``hms_<secret>`` (24 bytes → ~32 chars). MP sends this as the
+    ``Authorization: Bearer`` value when calling HMS; the custom
+    ``MPTenantExtension`` (in the vendored HMS fork) maps it to the tenant's
+    Postgres schema. Distinct per tenant so HMS can resolve the right schema.
+    """
+    return f"hms_{secrets.token_urlsafe(_APIKEY_SECRET_BYTES)}"
+
+
+def tenant_hms_schema(tenant_id: str) -> str:
+    """Derive a tenant's HMS Postgres schema name from its MP tenant id.
+
+    Convention: ``tenant_<mp_tenant_id>``. The id is already a safe url-safe
+    token (``ten_<base62>``) so no extra sanitization is needed before this
+    value reaches a Postgres identifier.
+    """
+    return f"tenant_{tenant_id}"

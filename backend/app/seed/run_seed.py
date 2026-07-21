@@ -95,6 +95,9 @@ async def seed_hms_banks() -> list[str]:
     bank with defaults on first touch, so an empty PUT body is enough.
     """
     settings = get_settings()
+    # Seed runs outside a request/tenant context; it provisions Luna's banks,
+    # so use the shared Luna key (the seed data also writes it onto the Luna
+    # tenant row so later request-scoped calls resolve the same key).
     client = HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
     bank_ids: list[str] = [u["id"] for u in seed_data.users()]
 

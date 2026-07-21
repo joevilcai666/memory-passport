@@ -11,17 +11,11 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
-from app.config import get_settings
-from app.hms import HmsClient, HmsError
+from app.hms import HmsError, hms_client_for_tenant
 from app.schemas.ingest import IngestEventRequest, IngestEventResponse, IngestResultItem
 from app.services.ingest import ingest_event
 
 router = APIRouter(prefix="/v1/events", tags=["ingest"])
-
-
-def _hms_client() -> HmsClient:
-    settings = get_settings()
-    return HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
 
 
 @router.post("/ingest", response_model=IngestEventResponse, status_code=status.HTTP_201_CREATED)
@@ -34,7 +28,7 @@ async def ingest(
         outcome = await ingest_event(
             db,
             tenant,
-            hms_client=_hms_client(),
+            hms_client=hms_client_for_tenant(tenant.tenant.hms_api_key),
             user_id=body.user_id,
             agent_id=body.agent_id,
             relationship_id=body.relationship_id,

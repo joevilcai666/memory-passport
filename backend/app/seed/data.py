@@ -85,11 +85,20 @@ SANDBOX_API_KEY = "mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd"
 
 
 def tenant() -> dict:
+    # The Luna tenant keeps the legacy shared HMS key (so existing MP↔HMS calls
+    # and the seeded banks under tenant_luna keep working unchanged). The key
+    # is read from the env so a deployment that already rotated the placeholder
+    # honours its real value; the default matches docker-compose.yml. See
+    # issue #12 + backend/app/hms/tenant.py.
+    import os
+
     return {
         "id": TENANT_ID,
         "name": "Luna Inc.",
         "plan": "Sandbox",
         "created_at": days_ago(28),
+        "hms_api_key": os.getenv("HMS_API_TENANT_API_KEY", "hms_tenant_luna_change_me"),
+        "hms_schema": "tenant_luna",
     }
 
 

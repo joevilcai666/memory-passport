@@ -6,7 +6,13 @@ x-hms-real-env: &hms-real-env
   HMS_API_DATABASE_URL: postgresql://${HMS_DB_USER:-hms}:${HMS_DB_PASSWORD:-hms_dev_password_change_me}@postgres:5432/${HMS_DB_NAME:-hms}
   HMS_API_DATABASE_SCHEMA: ${HMS_API_DATABASE_SCHEMA:-tenant_luna}
   HMS_API_VECTOR_EXTENSION: pgvector
-  HMS_API_TENANT_EXTENSION: hms_api.extensions.builtin.tenant:ApiKeyTenantExtension
+  # Multi-tenant HMS mapping (issue #12): the custom MPTenantExtension maps each
+  # MP tenant's HMS API key to its own Postgres schema (tenant_<mp_tenant_id>),
+  # auto-provisioned on first ingest. Format: <key1>=<schema1>,<key2>=<schema2>.
+  # Default seeds the Luna pair so the existing tenant_luna data keeps working;
+  # add a new pair per onboarded tenant (or set HMS_API_TENANT_KEYS outright).
+  HMS_API_TENANT_EXTENSION: hms_api.extensions.builtin.mp_tenant:MPTenantExtension
+  HMS_API_TENANT_KEYS: ${HMS_API_TENANT_KEYS:-${HMS_API_TENANT_API_KEY:-hms_tenant_luna_change_me}=tenant_luna}
   HMS_API_TENANT_API_KEY: ${HMS_API_TENANT_API_KEY:-hms_tenant_luna_change_me}
   HMS_API_RUN_MIGRATIONS_ON_STARTUP: "true"
   HMS_API_SKIP_LLM_VERIFICATION: ${HMS_API_SKIP_LLM_VERIFICATION:-false}

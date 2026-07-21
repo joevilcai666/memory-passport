@@ -72,6 +72,24 @@ def test_seed_mp_counts_match_acceptance_criteria(fresh_pg_db):
 
 
 @pg_only
+def test_seed_luna_tenant_backfilled_with_legacy_hms_credentials(fresh_pg_db):
+    """The Luna tenant keeps the shared HMS key + the tenant_luna schema (issue #12 back-compat)."""
+    import os
+
+    from app.db.session import session_scope
+    from app.models.tenant import Tenant
+    from app.seed.run_seed import seed_mp
+
+    seed_mp()
+    expected_key = os.getenv("HMS_API_TENANT_API_KEY", "hms_tenant_luna_change_me")
+    with session_scope() as db:
+        luna = db.get(Tenant, seed_data.TENANT_ID)
+        assert luna is not None
+        assert luna.hms_api_key == expected_key
+        assert luna.hms_schema == "tenant_luna"
+
+
+@pg_only
 def test_seed_mp_is_idempotent(fresh_pg_db):
     """Re-running seed doesn't duplicate rows — counts stay constant."""
     from app.seed.run_seed import seed_mp

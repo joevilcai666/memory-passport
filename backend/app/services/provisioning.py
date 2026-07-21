@@ -32,7 +32,7 @@ from app.auth import TenantContext
 from app.models.enums import AuditAction, DeviceStatus, MemoryScope, MemoryStatus
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
-from app.models.tenant import ApiKey, App
+from app.models.tenant import ApiKey, App, Tenant
 from app.services.audit import api_actor, write_audit
 from app.services.ids import (
     new_agent_id,
@@ -40,10 +40,12 @@ from app.services.ids import (
     new_apikey_id,
     new_app_id,
     new_device_id,
+    new_hms_key,
     new_pairing_code,
     new_passport_id,
     new_relationship_id,
     new_user_id,
+    tenant_hms_schema,
 )
 
 
@@ -89,6 +91,45 @@ def _consume_pairing_code(device_id: str, presented: str) -> bool:
 def reset_pairing_codes_for_tests() -> None:
     """Test hook — wipe the pairing-code map between tests."""
     _PAIRING_CODES.clear()
+
+
+# ---------------------------------------------------------------------------
+# Tenant HMS credentials (issue #12)
+# ---------------------------------------------------------------------------
+
+
+def provision_tenant_hms_credentials(db: Session, tenant: Tenant) -> bool:
+    """Mint + persist per-tenant HMS credentials if missing.
+
+    A tenant is expected to have its own ``hms_api_key`` (sent as the Bearer
+    token to HMS) and ``hms_schema`` (the Postgres schema HMS isolates the
+    tenant's banks into). The model defaults mint values lazily, but for an
+    already-flushed row (e.g. a new tenant created via an admin path) we set
+    them explicitly here so the audit trail records the mint and the schema
+    name follows the canonical ``tenant_<id>`` convention.
+
+    Returns ``True`` if credentials were minted on this call, ``False`` if the
+    tenant already had them (idempotent — safe to call on every create_app).
+    """
+    if tenant.hms_api_key and tenant.hms_schema:
+        return False
+    if not tenant.hms_schema:
+        tenant.hms_schema = tenant_hms_schema(tenant.id)
+    if not tenant.hms_api_key:
+        tenant.hms_api_key = new_hms_key()
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=tenant.id,
+        actor="system",
+        action=AuditAction.TENANT_HMS_PROVISIONED,
+        target=tenant.id,
+        detail=(
+            f"Provisioned HMS credentials for tenant '{tenant.name}' "
+            f"(schema={tenant.hms_schema})"
+        ),
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +196,12 @@ def create_app(
     """
     tenant = context.tenant
     now = _now()
+
+    # Issue #12: ensure the tenant has HMS credentials minted before we create
+    # an App under it (the App's first user will trigger an HMS bank PUT, which
+    # needs a per-tenant key + schema). Idempotent — a no-op for tenants that
+    # already have credentials (e.g. the seeded Luna tenant).
+    provision_tenant_hms_credentials(db, tenant)
 
     app = App(
         id=new_app_id(),
