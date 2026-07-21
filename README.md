@@ -77,6 +77,29 @@ missing or still a `*_change_me` placeholder. See
 [`docs/real-hms.md`](docs/real-hms.md) for the exact variables and verification
 commands. The default `make demo` never calls a paid provider.
 
+## Production hardening
+
+The default stack is loopback-only with placeholder credentials — correct for a
+single-machine eval, wrong for shared infrastructure. The repo ships the
+self-service pieces to move past that:
+
+- **TLS / reverse proxy** — `make tls-up` runs Caddy in front of `mp-backend`
+  with auto-HTTPS on a real domain or an internal CA for LAN-only deploys
+  ([`docker/caddy/Caddyfile`](docker/caddy/Caddyfile),
+  [`docker-compose.tls.yml`](docker-compose.tls.yml)).
+- **DB password parameterization** — `docker/postgres-init.sh` now reads
+  `MP_DB_PASSWORD` / `HMS_DB_PASSWORD` from the environment, so a single
+  `.env` override flows end-to-end.
+- **Backups + restore** — `make backup` dumps both databases;
+  `make restore STAMP=<timestamp>` replays them
+  ([`scripts/backup.sh`](scripts/backup.sh), [`scripts/restore.sh`](scripts/restore.sh)).
+- **Monitoring** — scrape `GET /v1/health` (returns 503 when HMS or DB is
+  down); example Prometheus config in the guide.
+
+The full walkthrough — TLS, secrets management + rotation, backup scheduling,
+Prometheus alerting, HMS access control, region/compliance checklist — lives in
+[`docs/production-hardening.md`](docs/production-hardening.md).
+
 ## What is implemented
 
 - API-key authentication and strict tenant scoping

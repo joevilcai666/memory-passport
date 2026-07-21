@@ -8,20 +8,26 @@
 #
 # Both roles get full privileges on their own DB only, so MP and HMS are
 # isolated at the database level while still sharing one server.
+#
+# Role passwords are sourced from MP_DB_PASSWORD / HMS_DB_PASSWORD (the same
+# variables docker-compose.yml feeds into the backend / HMS containers), so a
+# single .env override now flows end-to-end. The defaults below match
+# .env.example so `make demo` still works out of the box.
 set -euo pipefail
 
 PSQL=(psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER")
 
 # -- Memory Passport ----------------------------------------------------------
-"${PSQL[@]}" <<'SQL'
-DO $$
+# CREATEDB so the test suite can spin up throwaway databases
+# (test_seed / test_smoke / test_migrations each create+drop a DB).
+MP_DB_PASSWORD="${MP_DB_PASSWORD:?MP_DB_PASSWORD must be set (see .env.example)}"
+"${PSQL[@]}" <<SQL
+DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mp') THEN
-    -- CREATEDB so the test suite can spin up throwaway databases
-    -- (test_seed / test_smoke / test_migrations each create+drop a DB).
-    CREATE ROLE mp LOGIN PASSWORD 'mp_dev_password_change_me' CREATEDB;
+    CREATE ROLE mp LOGIN PASSWORD '${MP_DB_PASSWORD}' CREATEDB;
   END IF;
-END$$;
+END\$\$;
 SQL
 
 if ! "${PSQL[@]}" -tAc "SELECT 1 FROM pg_database WHERE datname='memory_passport'" | grep -q 1; then
@@ -31,13 +37,14 @@ fi
 "${PSQL[@]}" -d memory_passport -c "CREATE EXTENSION IF NOT EXISTS vector"
 
 # -- HMS ----------------------------------------------------------------------
-"${PSQL[@]}" <<'SQL'
-DO $$
+HMS_DB_PASSWORD="${HMS_DB_PASSWORD:?HMS_DB_PASSWORD must be set (see .env.example)}"
+"${PSQL[@]}" <<SQL
+DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'hms') THEN
-    CREATE ROLE hms LOGIN PASSWORD 'hms_dev_password_change_me';
+    CREATE ROLE hms LOGIN PASSWORD '${HMS_DB_PASSWORD}';
   END IF;
-END$$;
+END\$\$;
 SQL
 
 if ! "${PSQL[@]}" -tAc "SELECT 1 FROM pg_database WHERE datname='hms'" | grep -q 1; then

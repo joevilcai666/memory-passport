@@ -13,6 +13,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password_change_me}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      # Role passwords for the mp/hms databases created by docker/postgres-init.sh.
+      # Must match the MP_DB_*/HMS_DB_* values fed to the backend / HMS containers
+      # below; a single .env override now flows end-to-end.
+      MP_DB_PASSWORD: ${MP_DB_PASSWORD:-mp_dev_password_change_me}
+      HMS_DB_PASSWORD: ${HMS_DB_PASSWORD:-hms_dev_password_change_me}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init-mp-hms.sh:ro
