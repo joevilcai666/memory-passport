@@ -179,6 +179,7 @@ class AuditAction(str, enum.Enum):
     RETRIEVAL_PERFORMED = "retrieval.performed"
     DEVICE_WIPED = "device.wiped"
     USER_DELETED = "user.deleted"
+    TENANT_HMS_PROVISIONED = "tenant.hms_provisioned"  # issue #12 multi-tenant
 
 
 class TeamRole(str, enum.Enum):

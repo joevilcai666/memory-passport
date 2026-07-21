@@ -1,29 +1,50 @@
-"""MP tenant → HMS schema mapping (Slice N+).
+"""MP tenant → HMS schema mapping (issue #12).
 
-Slice 1 ships exactly one tenant (Luna) and uses HMS's built-in
-``ApiKeyTenantExtension`` with a single ``HMS_API_DATABASE_SCHEMA`` (``tenant_luna``).
-Every HMS bank therefore lives under the Luna tenant's Postgres schema, which
-satisfies the "under the Luna tenant's HMS schema" acceptance criterion.
+Status: **implemented**. Slice 1 shipped exactly one HMS tenant (Luna) using
+HMS's built-in ``ApiKeyTenantExtension`` with a single ``HMS_API_DATABASE_SCHEMA``
+(``tenant_luna``). This slice adds true multi-tenancy: each MP tenant maps to
+its own HMS schema, auto-provisioned on first ingest.
 
-The moment MP gains a second tenant we need a *custom* ``TenantExtension`` that
-maps each MP tenant to a distinct ``TenantContext(schema_name=...)``. The HMS
-extension contract (verified at the pinned commit ``a808ab393ca0``) is:
+Design
+------
+* MP stores a per-tenant HMS API key (``tenants.hms_api_key``) + schema name
+  (``tenants.hms_schema``). Migration ``0009_tenant_hms_credentials`` adds the
+  columns and backfills the Luna tenant with the legacy shared key +
+  ``tenant_luna`` (so existing data keeps working).
+* When MP calls HMS it forwards the caller tenant's key as the Bearer token
+  (see :func:`app.hms.hms_client_for_tenant`). The MP↔HMS HTTP contract
+  (:class:`app.hms.HmsClient`) is **unchanged** — only the bearer key +
+  tenant→schema resolution change.
+* The custom HMS extension :class:`hms_api.extensions.builtin.mp_tenant.MPTenantExtension`
+  (in the vendored HMS fork at ``vendor/hms``) resolves the key → schema via an
+  env-loaded map (``HMS_API_TENANT_KEYS=key1=schema1,key2=schema2,...``) and
+  calls ``context.run_migration(schema)`` on first sight to create the schema
+  + replay HMS's migrations into it (idempotent, per-schema advisory lock).
+* Provisioning: :func:`app.services.provisioning.provision_tenant_hms_credentials`
+  mints the key + schema for a tenant that doesn't have them yet; called from
+  ``create_app`` (idempotent) so onboarding a new tenant + app is automatic.
 
-    class TenantExtension(Extension, ABC):
-        async def authenticate(self, context: RequestContext) -> TenantContext: ...
-        async def list_tenants(self) -> list[Tenant]: ...
+Deployment
+----------
+* Demo mode (``docker-compose.yml``) is unchanged — the demo HMS is single-schema
+  by design and ignores the key.
+* Real mode (``docker-compose.real.yml``) now sets
+  ``HMS_API_TENANT_EXTENSION=hms_api.extensions.builtin.mp_tenant:MPTenantExtension``
+  + ``HMS_API_TENANT_KEYS`` (defaulted to the Luna pair). Onboarding a new
+  tenant means minting a key on the MP side and adding ``<new_key>=tenant_<id>``
+  to ``HMS_API_TENANT_KEYS`` in ``.env`` (then ``make real-up``).
 
-where ``TenantContext`` is just ``@dataclass class TenantContext: schema_name: str``
-and ``RequestContext`` carries ``api_key`` / ``api_key_id`` / ``tenant_id``.
-
-Reference implementations ship with HMS:
-* ``hms_api.extensions.builtin.tenant:ApiKeyTenantExtension`` (single-schema, what we use)
-* ``hms_api.extensions.builtin.supabase_tenant`` (multi-tenant JWT)
-
-The custom MP extension would resolve the MP tenant from the request (via a
-shared header or the resolved MP TenantContext) and return
-``TenantContext(schema_name=f"tenant_{mp_tenant_id}")``. ``ExtensionContext.run_migration``
-provisions the schema on first sight. This is the documented next slice.
+Tests
+-----
+* ``backend/tests/test_provisioning.py`` — creating an App under a fresh
+  tenant mints the key + schema; the seeded Luna tenant keeps ``tenant_luna``.
+* ``backend/tests/test_multi_tenant_hms.py`` — parametrized isolation: tenant
+  A's HMS client carries ``hms_api_key_A``, tenant B's carries ``hms_api_key_B``.
+* The fork's ``core/dataplane/tests/test_mp_tenant.py`` — the HMS-side
+  key→schema resolution + lazy provisioning + sanitization.
+* Compose-level cross-schema isolation stays manual (needs the real HMS image)
+  — see ``docs/real-hms.md``.
 """
 
-# Intentionally no code — this module exists to record the plan in-place.
+# This module records the design in-place; the implementation lives in the
+# services / models / the forked HMS extension noted above.

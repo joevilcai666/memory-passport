@@ -16,17 +16,11 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
-from app.config import get_settings
-from app.hms import HmsClient, HmsError
+from app.hms import HmsError, hms_client_for_tenant
 from app.schemas.provisioning import UserCreateRequest, UserResponse
 from app.services import provisioning
 
 router = APIRouter(prefix="/v1", tags=["provisioning"])
-
-
-def _hms_client() -> HmsClient:
-    settings = get_settings()
-    return HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
 
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -44,7 +38,7 @@ async def create_user(
             age_group=body.age_group,
             region=body.region,
             display_name=body.display_name,
-            hms_client=_hms_client(),
+            hms_client=hms_client_for_tenant(tenant.tenant.hms_api_key),
         )
     except HmsError as exc:
         # Bank provisioning failed — surface as 502 so clients can distinguish

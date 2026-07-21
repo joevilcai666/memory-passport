@@ -8,8 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
-from app.config import get_settings
-from app.hms import HmsClient, HmsError
+from app.hms import HmsError, hms_client_for_tenant
 from app.models.enums import MemoryScope, MemoryStatus, MemoryType
 from app.schemas.memory_crud import MemoryListResponse, MemoryPatch, MemoryRecordResponse
 from app.schemas.retrieve import RetrievedMemory, RetrieveRequest, RetrieveResponse
@@ -23,11 +22,6 @@ from app.services.memory_crud import (
 from app.services.retrieve import retrieve_memories
 
 router = APIRouter(prefix="/v1/memories", tags=["retrieve"])
-
-
-def _hms_client() -> HmsClient:
-    settings = get_settings()
-    return HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
 
 
 @router.get("", response_model=MemoryListResponse)
@@ -73,10 +67,16 @@ async def patch_memory(
 ) -> MemoryRecordResponse:
     try:
         if body.content is not None:
-            record = await edit_memory(db, tenant, _hms_client(), memory_id, body.content)
+            record = await edit_memory(
+                db, tenant, hms_client_for_tenant(tenant.tenant.hms_api_key),
+                memory_id, body.content,
+            )
         else:
             assert body.status is not None
-            record = await transition_memory(db, tenant, _hms_client(), memory_id, body.status)
+            record = await transition_memory(
+                db, tenant, hms_client_for_tenant(tenant.tenant.hms_api_key),
+                memory_id, body.status,
+            )
     except HmsError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -94,7 +94,9 @@ async def remove_memory(
     tenant=TenantDep,
 ) -> MemoryRecordResponse:
     try:
-        record = await delete_memory(db, tenant, _hms_client(), memory_id)
+        record = await delete_memory(
+            db, tenant, hms_client_for_tenant(tenant.tenant.hms_api_key), memory_id,
+        )
     except HmsError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -119,7 +121,7 @@ async def retrieve(
         outcome = await retrieve_memories(
             db,
             tenant,
-            hms_client=_hms_client(),
+            hms_client=hms_client_for_tenant(tenant.tenant.hms_api_key),
             user_id=body.user_id,
             agent_id=body.agent_id,
             relationship_id=body.relationship_id,

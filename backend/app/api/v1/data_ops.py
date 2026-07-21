@@ -9,8 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
-from app.config import get_settings
-from app.hms import HmsClient, HmsError
+from app.hms import HmsError, hms_client_for_tenant
 from app.schemas.data_ops import (
     DeleteUserRequest,
     DeleteUserResponse,
@@ -27,11 +26,6 @@ from app.services.data_ops import (
 )
 
 router = APIRouter(prefix="/v1", tags=["data-operations"])
-
-
-def _hms_client() -> HmsClient:
-    settings = get_settings()
-    return HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
 
 
 @router.post(
@@ -85,7 +79,9 @@ async def post_delete_user(
     tenant=TenantDep,
 ) -> DeleteUserResponse:
     try:
-        response = await delete_user(db, tenant, _hms_client(), body.user_id)
+        response = await delete_user(
+            db, tenant, hms_client_for_tenant(tenant.tenant.hms_api_key), body.user_id,
+        )
     except HmsError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

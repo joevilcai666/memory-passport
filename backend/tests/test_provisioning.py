@@ -196,6 +196,64 @@ def test_create_app_writes_audit_log(two_tenants, app_client):
     assert rows[0].target.startswith("app_")
 
 
+def test_every_tenant_has_distinct_hms_credentials(two_tenants):
+    """Each tenant mints a distinct HMS key + schema (issue #12 isolation basis).
+
+    The model defaults provision these lazily on construction, so even the
+    fixture's bare ``Tenant(...)`` rows get unique keys + canonical schemas.
+    """
+    with session_scope() as db:
+        tenants = db.query(Tenant).order_by(Tenant.id).all()
+    assert len(tenants) == 2
+    keys = {t.hms_api_key for t in tenants}
+    assert len(keys) == 2, "tenants must not share an HMS key"
+    for tenant in tenants:
+        assert tenant.hms_schema == f"tenant_{tenant.id}", (
+            f"schema must follow the tenant_<id> convention, got {tenant.hms_schema}"
+        )
+
+
+def test_provision_tenant_hms_credentials_is_idempotent_and_audited(two_tenants):
+    """Calling the helper on an already-provisioned tenant is a no-op; on a
+    bare tenant it mints + writes a tenant.hms_provisioned audit row."""
+    from app.services.provisioning import provision_tenant_hms_credentials
+
+    # Existing tenant already has credentials (from the model default) → no-op.
+    with session_scope() as db:
+        tenant = db.get(Tenant, two_tenants["a_tenant"])
+        minted = provision_tenant_hms_credentials(db, tenant)
+    assert minted is False
+
+    # A brand-new tenant with cleared credentials gets minted + audited.
+    with session_scope() as db:
+        fresh = Tenant(
+            id="ten_fresh",
+            name="Fresh",
+            plan="Sandbox",
+            created_at=_now(),
+            hms_api_key="",
+            hms_schema="",
+        )
+        db.add(fresh)
+        db.flush()
+        minted = provision_tenant_hms_credentials(db, fresh)
+        db.commit()
+        assert minted is True
+        assert fresh.hms_api_key.startswith("hms_")
+        assert fresh.hms_schema == "tenant_ten_fresh"
+        audit = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.tenant_id == "ten_fresh",
+                AuditLog.action == AuditAction.TENANT_HMS_PROVISIONED,
+            )
+            .count()
+        )
+        assert audit == 1
+        # And a second call is now a no-op.
+        assert provision_tenant_hms_credentials(db, fresh) is False
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/agents
 # ---------------------------------------------------------------------------

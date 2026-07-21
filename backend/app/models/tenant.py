@@ -23,6 +23,13 @@ from app.models.enums import (
     ProductType,
     TenantPlan,
 )
+from app.services.ids import new_hms_key, tenant_hms_schema
+
+
+def _default_hms_schema(context) -> str:
+    """Default schema name = ``tenant_<id>``; the seeded Luna row overrides it."""
+    params = context.get_current_parameters()
+    return tenant_hms_schema(params["id"])
 
 
 class Tenant(Base):
@@ -36,6 +43,19 @@ class Tenant(Base):
         PG_TENANT_PLAN, nullable=False, default=TenantPlan.SANDBOX
     )
     created_at: Mapped[datetime] = mapped_column(nullable=False)
+    # Per-tenant HMS credentials (issue #12). MP sends ``hms_api_key`` as the
+    # Bearer token when calling HMS; the custom MPTenantExtension maps it to
+    # ``hms_schema`` (a distinct Postgres schema under the shared HMS DB).
+    # Lazily provisioned on first ``create_app`` for a tenant; the seeded Luna
+    # tenant is backfilled with the legacy shared key + ``tenant_luna`` schema.
+    # Both default so bare ``Tenant(...)`` constructions in tests/seeds keep
+    # working without caring about the multi-tenant detail.
+    hms_api_key: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True, default=new_hms_key
+    )
+    hms_schema: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=_default_hms_schema
+    )
 
     apps: Mapped[list[App]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
 

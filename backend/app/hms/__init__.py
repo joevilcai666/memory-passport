@@ -25,6 +25,8 @@ from urllib.parse import quote
 
 import httpx
 
+from app.config import get_settings
+
 
 class HmsError(RuntimeError):
     """Raised when an HMS call fails unexpectedly."""
@@ -254,4 +256,28 @@ class HmsClient:
         return httpx.AsyncClient(timeout=self._timeout, trust_env=False)
 
 
-__all__ = ["HmsClient", "HmsError"]
+def hms_client_for_tenant(hms_api_key: str | None) -> HmsClient:
+    """Build an ``HmsClient`` authenticated with the caller tenant's HMS key.
+
+    Multi-tenant HMS mapping (issue #12): in real mode every tenant has its own
+    HMS API key (``tenants.hms_api_key``) and the custom ``MPTenantExtension``
+    maps that key to the tenant's Postgres schema, so the key MP sends
+    determines which schema the bank lives under.
+
+    In demo mode (the credential-free local evaluator) the demo HMS is
+    single-schema and only knows the one shared ``settings.hms_api_key``, so we
+    always send that — per-tenant keys are meaningless to it. This keeps the
+    demo path working unchanged while real mode gets true per-tenant keys.
+
+    Falls back to ``settings.hms_api_key`` when no tenant context is available
+    (the health probe and the seed runner both call HMS outside a request).
+    """
+    settings = get_settings()
+    if settings.memory_engine_mode == "demo":
+        api_key = settings.hms_api_key
+    else:
+        api_key = hms_api_key or settings.hms_api_key
+    return HmsClient(base_url=settings.hms_api_url, api_key=api_key)
+
+
+__all__ = ["HmsClient", "HmsError", "hms_client_for_tenant"]

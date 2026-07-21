@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.db.session import get_engine
-from app.hms import HmsClient
+from app.hms import hms_client_for_tenant
 
 router = APIRouter(tags=["health"])
 
@@ -33,11 +33,12 @@ async def health() -> JSONResponse:
     except Exception:  # noqa: BLE001
         db = "error"
 
-    # HMS: ping the upstream /health endpoint.
+    # HMS: ping the upstream /health endpoint. No tenant context here, so this
+    # uses the shared Luna/default key (``settings.hms_api_key`` via the helper)
+    # — the health probe is infra-level, not per-tenant.
     hms = "ok"
     try:
-        settings = get_settings()
-        client = HmsClient(base_url=settings.hms_api_url, api_key=settings.hms_api_key)
+        client = hms_client_for_tenant(None)
         result = await client.health()
         if result.get("status") != "healthy":
             hms = "error"
