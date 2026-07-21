@@ -68,6 +68,9 @@ def download_export(
     tenant=TenantDep,
 ) -> FileResponse:
     artifact = resolve_export_download(db, tenant.tenant.id, export_id, token)
+    # Persist the one-shot token clear before streaming the artifact so a
+    # replay can't pick up the same token on another worker. See issue #13.
+    db.commit()
     return FileResponse(
         artifact,
         media_type="application/json",
