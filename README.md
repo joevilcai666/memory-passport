@@ -4,12 +4,14 @@
 
 **B 端客户第一次安装和验收，请直接阅读：**
 [`Memory Passport B 端客户安装与验收指南（中文）`](B2B_CUSTOMER_GUIDE.zh-CN.md)
+| 想快速点击体验界面：[`客户快速上手指南（中文）`](CUSTOMER_QUICKSTART.zh-CN.md)
 
 Memory Passport is an open-source, user-owned memory layer for AI companions
-and robots. This repository contains a Next.js product prototype and a complete
-FastAPI backend with tenant isolation, policy enforcement, versioned memory
-CRUD, device migration, audit/usage aggregates, model-neutral exports, and
-privacy deletion.
+and robots. This repository contains a Next.js web console (wired to the real
+backend, with seeded data as offline fallback) and a complete FastAPI backend
+with tenant isolation, policy enforcement, versioned memory CRUD, device
+migration, audit/usage aggregates, model-neutral exports, and privacy
+deletion.
 
 The default local stack is credential-free. It runs a deterministic service
 that implements the same HTTP boundary used by HMS, so an evaluator can clone
@@ -96,7 +98,7 @@ Acceptance evidence for GitHub issues #2–#10 is mapped to automated tests in
 
 ```text
 backend/                  FastAPI domain service, Alembic, pytest suite
-src/                      Next.js 16 App Router prototype
+src/                      Next.js 16 App Router web console (wired to backend)
 vendor/hms/               pinned real HMS git submodule
 docker-compose.yml        zero-credential evaluator stack
 docker-compose.real.yml   real HMS API/worker overlay
@@ -129,8 +131,12 @@ The frontend preserves the interactive Luna story:
 - `/console/*`: B-side admin console, policies, users, devices, and audit log
 - `/app/*`: user consent, memory center, device binding, and migration hero flow
 
-The UI still uses seeded Zustand state as an interactive product prototype;
-the backend is independently runnable and fully testable through its HTTP API.
+The UI is wired to the FastAPI backend via a typed HTTP client
+(`src/lib/api-client.ts`); on mount it hydrates memories, audit logs, and
+usage from the backend, and mutations (edit, delete, policy, migration, …)
+call the backend live. When the backend is unreachable, the store falls back
+to the seeded Luna dataset so the UI keeps rendering. The backend is also
+independently runnable and fully testable through its HTTP API.
 
 ## License and security
 
