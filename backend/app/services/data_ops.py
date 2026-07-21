@@ -29,8 +29,6 @@ from app.schemas.data_ops import DeleteUserResponse, ExportStatusResponse
 from app.services.audit import api_actor, write_audit
 from app.services.ids import new_export_id
 
-_EXPORT_TOKENS: dict[str, str] = {}
-
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
@@ -58,6 +56,10 @@ def create_export_job(
         download_token_hash=_token_hash(token),
         download_token_expires_at=_now()
         + timedelta(seconds=settings.export_token_ttl_seconds),
+        # Persist the plaintext so the status endpoint can build download_url
+        # across processes/restarts (the hash is unrecoverable). Cleared on
+        # successful download and on job failure (one-shot). See issue #13.
+        download_token=token,
         artifact_path=None,
         error_message=None,
         created_at=_now(),
@@ -65,7 +67,6 @@ def create_export_job(
     )
     db.add(job)
     db.flush()
-    _EXPORT_TOKENS[job.id] = token
     return job
 
 
@@ -117,6 +118,8 @@ def run_export_job(export_id: str) -> None:
                 job.error_message = "export failed"
                 job.completed_at = _now()
                 job.artifact_path = None
+                # A failed export is not downloadable; drop the plaintext token.
+                job.download_token = None
 
 
 def get_export_status(
@@ -125,7 +128,7 @@ def get_export_status(
     export_id: str,
 ) -> ExportStatusResponse:
     job = _authorized_export(db, tenant_id, export_id)
-    token = _EXPORT_TOKENS.get(job.id)
+    token = job.download_token
     unexpired = _as_utc(job.download_token_expires_at) >= _now()
     download_url = None
     if job.status == ExportStatus.COMPLETED and token and unexpired:
@@ -150,8 +153,15 @@ def resolve_export_download(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="export is not ready")
     if _as_utc(job.download_token_expires_at) < _now():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="download token expired")
-    if not hmac.compare_digest(job.download_token_hash, _token_hash(token)):
+    # The token is one-shot: it is consumed on first use (download_token is
+    # cleared post-download, see create_export_job + the clear below). A replay
+    # hits a cleared download_token → treat as invalid. The hash is still
+    # constant-time compared for the first (valid) use. See issue #13.
+    if not job.download_token or not hmac.compare_digest(job.download_token, token):
         raise forbidden("invalid_export_token", "invalid export download token")
+    # Consume the token so the URL can't be replayed. The hash stays for audit.
+    job.download_token = None
+    db.flush()
     export_root = Path(get_settings().export_dir).resolve()
     artifact = Path(job.artifact_path).resolve()
     if not artifact.is_relative_to(export_root) or not artifact.is_file():

@@ -247,6 +247,61 @@ def test_export_failure_is_persisted_without_internal_details(
     assert "secret" not in json.dumps(status).lower()
 
 
+def test_export_token_persists_across_store_reload(data_ops_seed, app_client):
+    """The download token must survive a store reload (not process memory).
+
+    Regression for issue #13: the plaintext token used to live in an in-process
+    dict, so a second worker or a restart silently lost the download_url. The
+    token is now persisted on the ExportJob row, so opening a brand-new session
+    (the process-reload proxy) still resolves it.
+    """
+    headers = _headers(data_ops_seed["key"])
+    export_id = app_client.post(
+        "/v1/exports", headers=headers, json={"user_id": "usr_data"}
+    ).json()["export_id"]
+
+    # The persisted row — not a module-level cache — holds the plaintext token.
+    with session_scope() as db:
+        job = db.get(ExportJob, export_id)
+        assert job.download_token is not None
+        assert job.download_token_hash  # verification hash still present
+
+    # download_url is built from the persisted row, so a status poll from a
+    # "fresh" session still returns it and the download succeeds.
+    status = app_client.get(f"/v1/exports/{export_id}", headers=headers).json()
+    assert status["download_url"], "download_url missing after store reload"
+    download = app_client.get(status["download_url"], headers=headers)
+    assert download.status_code == 200, download.text
+
+
+def test_export_token_is_one_shot_and_cleared_after_download(
+    data_ops_seed, app_client
+):
+    """A successful download consumes the token: it can't be replayed and the
+    status endpoint no longer returns a download_url. See issue #13."""
+    headers = _headers(data_ops_seed["key"])
+    export_id = app_client.post(
+        "/v1/exports", headers=headers, json={"user_id": "usr_data"}
+    ).json()["export_id"]
+    status = app_client.get(f"/v1/exports/{export_id}", headers=headers).json()
+    download_url = status["download_url"]
+    assert download_url
+
+    first = app_client.get(download_url, headers=headers)
+    assert first.status_code == 200, first.text
+
+    # The plaintext is cleared on the row — one-shot semantics.
+    with session_scope() as db:
+        assert db.get(ExportJob, export_id).download_token is None
+
+    # A replay of the exact URL now fails: status no longer exposes it and the
+    # download itself rejects the (now-cleared) token.
+    repeat_status = app_client.get(f"/v1/exports/{export_id}", headers=headers).json()
+    assert repeat_status["download_url"] is None
+    assert app_client.get(download_url, headers=headers).status_code == 403
+
+
+
 def test_delete_user_cascades_and_retrieve_short_circuits_hms(data_ops_seed, app_client):
     headers = _headers(data_ops_seed["key"])
     with respx.mock(base_url="http://hms-api.test", assert_all_called=False) as mock:

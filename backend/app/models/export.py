@@ -25,6 +25,10 @@ class ExportJob(Base):
     status: Mapped[ExportStatus] = mapped_column(PG_EXPORT_STATUS, nullable=False)
     download_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     download_token_expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    # Plaintext download token, persisted so the status endpoint can build the
+    # ``download_url`` across processes/restarts (the hash alone is unrecoverable).
+    # One-shot: cleared on successful download, and on job failure. See issue #13.
+    download_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     artifact_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
