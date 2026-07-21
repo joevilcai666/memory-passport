@@ -40,8 +40,9 @@ jobs:
       # ---- Frontend (Next.js 16 + React 19) --------------------------------
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        # No version pin: reads packageManager from package.json if present,
-        # otherwise falls back to the action's bundled default.
+        with:
+          # Pinned for reproducibility (package.json has no packageManager field).
+          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4
