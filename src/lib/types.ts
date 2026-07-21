@@ -295,3 +295,31 @@ export interface DashboardAlert {
   detail: string;
   timestamp: string;
 }
+
+// ---- Backend-derived shapes -----------------------------------------------
+// These mirror the projected memory + usage payloads returned by the FastAPI
+// backend. They are richer/looser than the authoritative MemoryRecord because
+// retrieve() applies scope projection + masking server-side.
+
+export interface RetrievedMemoryish {
+  id: ID;
+  type: string;
+  content: string;
+  scope: string;
+  sensitivity: string;
+  status: string;
+  confidence: number;
+  source: Record<string, unknown>;
+  portability: Portability;
+  model_provenance: { created_by_model?: string; retrieval_history?: RetrievalEvent[] } & Record<string, unknown>;
+  usage_count: number;
+  last_used_at: string | null;
+}
+
+export interface UsageBundle {
+  memory_mau: number;
+  ops: { ingest: number; retrieve: number; update: number; delete: number };
+  storage_bytes: number;
+  device_activations: number;
+  migration_count: number;
+}

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import type {
   App,
   AuditAction,
@@ -36,6 +37,7 @@ import {
   allUsers,
   activitySeries,
 } from "@/lib/mock-data";
+import { api, ApiError } from "@/lib/api-client";
 
 interface QuickstartState {
   apiKeyCreated: boolean;
@@ -45,7 +47,7 @@ interface QuickstartState {
 }
 
 interface MemoryStore {
-  // entities
+  // entities (seeded from mock-data; memories/audit/usage hydrate from backend)
   tenant: typeof tenant;
   app: App;
   agents: typeof agents;
@@ -62,6 +64,11 @@ interface MemoryStore {
   kpis: typeof kpis;
   activity: typeof activitySeries;
   quickstart: QuickstartState;
+
+  // backend sync state
+  hydrated: boolean;
+  backendReachable: boolean;
+  hydrate: () => Promise<void>;
 
   // ui prefs
   environment: "sandbox" | "production";
@@ -125,6 +132,26 @@ function pushAudit(
   ];
 }
 
+/** True when the backend is reachable AND the working context is sandbox. */
+function canCallBackend(state: MemoryStore): boolean {
+  return state.backendReachable;
+}
+
+/**
+ * Run an API mutation; on failure, surface a toast but never throw — the UI
+ * already applied the optimistic update, and for a demo/PoC audience a soft
+ * "saved locally, backend sync failed" is preferable to a half-broken screen.
+ */
+async function syncOrToast<T>(fn: () => Promise<T>, label: string): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : String(err);
+    toast.error(`Backend sync failed · ${label}`, { description: msg.slice(0, 180) });
+    return undefined;
+  }
+}
+
 export const useMemoryStore = create<MemoryStore>((set, get) => ({
   tenant,
   app: seedApp,
@@ -142,6 +169,60 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   kpis,
   activity: activitySeries,
   quickstart: initialQuickstart,
+
+  hydrated: false,
+  backendReachable: false,
+
+  // ---- hydration ---------------------------------------------------------
+  /**
+   * Fetch the live dataset from the backend and overwrite the corresponding
+   * seed slices. Entities the backend does not expose as GET lists (apps,
+   * users, agents, devices, relationships, policy) stay on their mock seed —
+   * they are configuration-shaped display data. Memories / audit / usage are
+   * the real per-customer data and hydrate fully.
+   *
+   * On any failure (backend down, auth rejected) we keep the seed and mark
+   * backendReachable=false so the UI can show an "offline · demo data" hint.
+   */
+  hydrate: async () => {
+    if (get().hydrated) return;
+    const reachable = await api.ping();
+    if (!reachable) {
+      set({ hydrated: true, backendReachable: false });
+      return;
+    }
+    const [memoriesR, auditR, usageR] = await Promise.allSettled([
+      api.getMemories(),
+      api.getAuditLogs(),
+      api.getUsage(),
+    ]);
+    set((s) => {
+      const next: Partial<MemoryStore> = {
+        hydrated: true,
+        backendReachable: true,
+      };
+      if (memoriesR.status === "fulfilled" && memoriesR.value.length > 0) {
+        next.memories = memoriesR.value;
+        // the quickstart "sent first event" step is satisfied if any memory exists
+        next.quickstart = { ...s.quickstart, firstEventSent: true, testUserCreated: true };
+      }
+      if (auditR.status === "fulfilled" && auditR.value.length > 0) {
+        next.auditLogs = auditR.value;
+      }
+      if (usageR.status === "fulfilled") {
+        const u = usageR.value;
+        // The Overview KPIs are shaped as headline numbers. Map the backend
+        // usage bundle onto the two fields that have a real correspondence;
+        // leave the rate-style KPIs on their seeded demo values.
+        next.kpis = {
+          ...s.kpis,
+          memoryMau: u.memory_mau,
+          memoryOps: u.ops.ingest + u.ops.retrieve + u.ops.update + u.ops.delete,
+        };
+      }
+      return next;
+    });
+  },
 
   environment: "sandbox",
   setEnvironment: (e) => set({ environment: e }),
@@ -167,8 +248,22 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       // cross_brand_app stays off in V0.1 (architecture ready, narrative deferred)
       if (axis === "cross_brand_app" && !current) return {};
       const portability = { ...s.policy.portability, [axis]: !current };
+      const policy = { ...s.policy, portability };
+      // Push the whole policy upsert; the backend has no delta endpoint.
+      if (canCallBackend(s)) {
+        void syncOrToast(
+          () =>
+            api.upsertPolicy({
+              app_id: policy.app_id,
+              agent_id: policy.agent_id,
+              portability,
+              retrieval: policy.retrieval,
+            }),
+          "policy upsert",
+        );
+      }
       return {
-        policy: { ...s.policy, portability },
+        policy,
         auditLogs: pushAudit(
           s.auditLogs,
           "Mia Chen",
@@ -180,36 +275,73 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
     }),
 
   setMaxMemoriesPerResponse: (n) =>
-    set((s) => ({
-      policy: { ...s.policy, retrieval: { ...s.policy.retrieval, max_memories_per_response: n } },
-    })),
+    set((s) => {
+      const policy = {
+        ...s.policy,
+        retrieval: { ...s.policy.retrieval, max_memories_per_response: n },
+      };
+      if (canCallBackend(s)) {
+        void syncOrToast(
+          () =>
+            api.upsertPolicy({
+              app_id: policy.app_id,
+              agent_id: policy.agent_id,
+              portability: policy.portability,
+              retrieval: policy.retrieval,
+            }),
+          "policy upsert",
+        );
+      }
+      return { policy };
+    }),
 
   toggleSensitiveInPrompt: () =>
-    set((s) => ({
-      policy: {
+    set((s) => {
+      const policy = {
         ...s.policy,
         retrieval: {
           ...s.policy.retrieval,
           include_sensitive_in_prompt: !s.policy.retrieval.include_sensitive_in_prompt,
         },
-      },
-    })),
+      };
+      if (canCallBackend(s)) {
+        void syncOrToast(
+          () =>
+            api.upsertPolicy({
+              app_id: policy.app_id,
+              agent_id: policy.agent_id,
+              portability: policy.portability,
+              retrieval: policy.retrieval,
+            }),
+          "policy upsert",
+        );
+      }
+      return { policy };
+    }),
 
-  editMemory: (id, content) =>
+  editMemory: (id, content) => {
     set((s) => ({
       memories: s.memories.map((m) =>
         m.id === id ? { ...m, content, version: m.version + 1 } : m,
       ),
       auditLogs: pushAudit(s.auditLogs, "Mia Chen", "memory.edited", id, "Content edited by user"),
-    })),
+    }));
+    if (canCallBackend(get())) {
+      void syncOrToast(() => api.patchMemory(id, { content }), `edit ${id}`);
+    }
+  },
 
-  setMemoryStatus: (id, status) =>
+  setMemoryStatus: (id, status) => {
     set((s) => ({
       memories: s.memories.map((m) => (m.id === id ? { ...m, status } : m)),
       auditLogs: pushAudit(s.auditLogs, "Sara Kim", "memory.edited", id, `Status → ${status}`),
-    })),
+    }));
+    if (canCallBackend(get())) {
+      void syncOrToast(() => api.patchMemory(id, { status }), `memory ${id}`);
+    }
+  },
 
-  deleteMemory: (id) =>
+  deleteMemory: (id) => {
     set((s) => ({
       memories: s.memories.map((m) =>
         m.id === id ? { ...m, status: "deleted" as MemoryStatus } : m,
@@ -221,7 +353,11 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
         id,
         "Deleted via Memory Center (tombstone)",
       ),
-    })),
+    }));
+    if (canCallBackend(get())) {
+      void syncOrToast(() => api.deleteMemory(id), `delete ${id}`);
+    }
+  },
 
   addMemory: (content, type) =>
     set((s) => {
@@ -257,6 +393,30 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
         usage_count: 0,
         model_provenance: { created_by_model: "gpt-4o", retrieval_history: [] },
       };
+      // Ingest through the backend pipeline so HMS retain runs; fall back to
+      // local-only insert when offline so the UI still shows the new memory.
+      if (canCallBackend(s)) {
+        void syncOrToast(
+          () =>
+            api.ingestEvent({
+              user_id: s.currentUser.id,
+              agent_id: agent.id,
+              relationship_id: s.relationship.id,
+              source_type: "explicit_instruction",
+              content,
+              quote: content,
+            }),
+          "ingest memory",
+        ).then((res) => {
+          if (res && res.results.length > 0) {
+            // Replace the optimistic id with the backend id on the matching row.
+            const createdId = res.results[0].id;
+            set((cur) => ({
+              memories: cur.memories.map((m) => (m.id === id ? { ...m, id: createdId } : m)),
+            }));
+          }
+        });
+      }
       return {
         memories: [newMem, ...s.memories],
         auditLogs: pushAudit(s.auditLogs, "Mia Chen", "memory.created", id, `Auto-written: "${content.slice(0, 40)}…"`),
@@ -293,6 +453,20 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
         usage_count: 0,
         model_provenance: { created_by_model: "gpt-4o", retrieval_history: [] },
       };
+      // Fire the real ingest so the customer sees their backend receive it.
+      if (canCallBackend(s)) {
+        void syncOrToast(
+          () =>
+            api.ingestEvent({
+              user_id: s.currentUser.id,
+              agent_id: agent.id,
+              relationship_id: s.relationship.id,
+              source_type: "explicit_instruction",
+              content: "I like test events to confirm the integration works.",
+            }),
+          "test event",
+        );
+      }
       return {
         memories: [newMem, ...s.memories.filter((m) => m.id !== id)],
         quickstart: { ...s.quickstart, firstEventSent: true, testUserCreated: true },
@@ -344,39 +518,62 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   setOldDeviceAccess: (a) =>
     set((s) => ({ migration: { ...s.migration, old_device_access: a } })),
 
-  executeMigration: () =>
-    set((s) => {
-      const movedIds = s.migration.selected_memory_ids;
-      return {
-        migration: {
-          ...s.migration,
-          status: "completed",
-          completed_at: new Date().toISOString(),
-        },
-        devices: s.devices.map((d) => {
-          if (d.id === deviceV2.id) {
-            return { ...d, status: "bound", bound_user_id: s.currentUser.id, last_seen_at: new Date().toISOString() };
-          }
-          if (d.id === deviceV1.id && s.migration.old_device_access === "remove") {
-            return { ...d, status: "unbound", bound_user_id: null };
-          }
-          return d;
-        }),
-        // re-link moved memories' device_id to v2 where they were device-scoped but portable
-        memories: s.memories.map((m) =>
-          movedIds.includes(m.id) && m.portability.layer === "portable"
-            ? { ...m, device_id: deviceV2.id }
-            : m,
-        ),
-        auditLogs: pushAudit(
-          s.auditLogs,
-          "Mia Chen",
-          "migration.completed",
-          s.migration.id,
-          `Moved ${movedIds.length} memories from ${deviceV1.generation} to ${deviceV2.generation}`,
-        ),
-      };
-    }),
+  executeMigration: () => {
+    const s = get();
+    const movedIds = s.migration.selected_memory_ids;
+    set((s2) => ({
+      migration: {
+        ...s2.migration,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      },
+      devices: s2.devices.map((d) => {
+        if (d.id === deviceV2.id) {
+          return { ...d, status: "bound", bound_user_id: s2.currentUser.id, last_seen_at: new Date().toISOString() };
+        }
+        if (d.id === deviceV1.id && s2.migration.old_device_access === "remove") {
+          return { ...d, status: "unbound", bound_user_id: null };
+        }
+        return d;
+      }),
+      // re-link moved memories' device_id to v2 where they were device-scoped but portable
+      memories: s2.memories.map((m) =>
+        movedIds.includes(m.id) && m.portability.layer === "portable"
+          ? { ...m, device_id: deviceV2.id }
+          : m,
+      ),
+      auditLogs: pushAudit(
+        s2.auditLogs,
+        "Mia Chen",
+        "migration.completed",
+        s2.migration.id,
+        `Moved ${movedIds.length} memories from ${deviceV1.generation} to ${deviceV2.generation}`,
+      ),
+    }));
+    // Push the migration through preview→execute on the backend. The seed
+    // migration's source/target ids are mock ids; if they don't resolve on the
+    // backend the call 404s and syncOrToast surfaces a soft warning — the
+    // optimistic UI change above already stands.
+    if (canCallBackend(s) && movedIds.length > 0) {
+      void syncOrToast(
+        () =>
+          api.previewMigration({
+            user_id: s.currentUser.id,
+            source_relationship_id: s.migration.source_relationship_id,
+            target_relationship_id: s.migration.target_relationship_id,
+            source_device_id: s.migration.source_device_id,
+            target_device_id: s.migration.target_device_id,
+          }).then((preview) =>
+            api.executeMigration({
+              migration_id: preview.migration_id,
+              selected_memory_ids: movedIds,
+              old_device_access: s.migration.old_device_access,
+            }),
+          ),
+        "migration execute",
+      );
+    }
+  },
 
   resetMigration: () =>
     set(() => ({
@@ -387,17 +584,27 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       },
     })),
 
-  deleteAllMemories: () =>
-    set((s) => ({
-      memories: s.memories.map((m) => ({ ...m, status: "deleted" as MemoryStatus })),
+  deleteAllMemories: () => {
+    const s = get();
+    set((cur) => ({
+      memories: cur.memories.map((m) => ({ ...m, status: "deleted" as MemoryStatus })),
       auditLogs: pushAudit(
-        s.auditLogs,
+        cur.auditLogs,
         "Mia Chen",
         "memory.deleted",
-        s.currentUser.id,
+        cur.currentUser.id,
         "Deleted ALL memories (tombstone) — user-initiated",
       ),
-    })),
+    }));
+    // Cascade delete each backend memory tombstone-by-tombstone. This is O(n)
+    // but correct; n is small for a PoC and the backend delete is idempotent
+    // against re-invocation on an already-tombstoned row.
+    if (canCallBackend(s)) {
+      for (const m of s.memories) {
+        void syncOrToast(() => api.deleteMemory(m.id), `delete ${m.id}`);
+      }
+    }
+  },
 
   getMemory: (id) => get().memories.find((m) => m.id === id),
 

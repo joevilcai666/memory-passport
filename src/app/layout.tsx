@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { StoreHydrator } from "@/components/store-hydrator";
 
 export const metadata: Metadata = {
   title: "Memory Passport — Portable memory infrastructure",
@@ -32,6 +33,7 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
+          <StoreHydrator />
           {children}
           <Toaster richColors position="bottom-right" />
         </ThemeProvider>

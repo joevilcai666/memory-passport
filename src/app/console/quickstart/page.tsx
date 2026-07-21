@@ -47,7 +47,11 @@ export default function QuickstartPage() {
   const [sendingEvent, setSendingEvent] = React.useState(false);
   const [retrieving, setRetrieving] = React.useState(false);
 
-  const sandboxKey = app.api_keys.find((k) => k.environment === "sandbox")?.key ?? "mp_sandbox_xxx";
+  // Prefer the real backend key exposed to the browser via env; fall back to
+  // the seeded sandbox key baked into mock-data, then to a placeholder.
+  const seedSandboxKey = app.api_keys.find((k) => k.environment === "sandbox")?.key;
+  const sandboxKey =
+    process.env.NEXT_PUBLIC_MP_API_KEY ?? seedSandboxKey ?? "mp_sandbox_xxx";
 
   const handleSendEvent = () => {
     setSendingEvent(true);

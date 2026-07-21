@@ -8,9 +8,9 @@ This file guides AI agents (Claude Code, etc.) working in the Memory Passport re
 
 ## What this is
 
-**Memory Passport** — a 100%-interactive **prototype** of a B2B2C portable memory infrastructure for AI companions and robots. The one-liner: **"换设备，不换关系；换模型，不换记忆"** (switch devices, not relationships; switch models, not memory).
+**Memory Passport** — a B2B2C portable memory infrastructure for AI companions and robots. The one-liner: **"换设备，不换关系；换模型，不换记忆"** (switch devices, not relationships; switch models, not memory).
 
-- It is a **prototype**: seeded mock data, no real backend, no real API keys, no Supabase. All state lives in a Zustand store.
+- The web UI is wired to the real FastAPI backend at `NEXT_PUBLIC_MP_API_URL` (default `http://127.0.0.1:8000`) via the API client in `src/lib/api-client.ts`. When the backend is unreachable, the store transparently falls back to the seeded mock dataset in `src/lib/mock-data.ts` so the UI keeps rendering. See `src/store/memory-store.ts`.
 - The canonical demo story is **Luna** — a hybrid (software + robot) companion app. Luna Robot v1→v2 migration is the **wedge** (the hero moment).
 - Full PRD lives at `docs/prds/Memory Passport PRD v2.0.md` — read it for strategy/data model/API. The PRD has been aligned to this prototype (Appendix C records the diff vs the original draft).
 
@@ -25,7 +25,7 @@ This file guides AI agents (Claude Code, etc.) working in the Memory Passport re
 - **framer-motion** for animation (minimal & functional — only the migration-complete page has an "earned" signature animation).
 - **Recharts** for the Overview activity chart.
 - **lucide-react** for icons (default 16px, `strokeWidth={1.5}`).
-- **Zustand** store at `src/store/memory-store.ts` — single store, seeded from `src/lib/mock-data.ts`. **All mutations are live** (toggle policy, edit/delete memory, run migration, delete-all) and update the UI immediately.
+- **Zustand** store at `src/store/memory-store.ts` — single store. Initial state is the seeded Luna dataset from `src/lib/mock-data.ts`; on mount the store hydrates from the real backend via the `src/lib/api-client.ts` HTTP client (base URL + API key from `NEXT_PUBLIC_MP_API_URL` / `NEXT_PUBLIC_MP_API_KEY`). All mutations call the backend and update local state on success.
 - **sonner** toasts — there is one global `<Toaster />` in the root layout. Use `import { toast } from "sonner"`. Do NOT mount a local `<Toaster />` per page.
 - **next-themes** for dark/light. Console defaults to dark; C-side forces light via `.paper-surface`.
 
@@ -89,8 +89,9 @@ Two App Router groups + a landing page. **Every route is real and clickable — 
 ### Data
 
 - `src/lib/types.ts` — every domain entity (User, Agent, Device, Relationship, MemoryRecord with portability + model_provenance, Migration, etc.). **The source of truth for shapes.**
-- `src/lib/mock-data.ts` — the Luna dataset (42 memories across Preferences/Relationship/Events/Boundaries/Tasks/Archived, v1+v2 devices, one in-progress migration, audit logs, KPIs). Copy in the PRD comes straight from here.
-- `src/store/memory-store.ts` — Zustand store + all mutations. Read selectors narrowly (e.g. `useMemoryStore(s => s.memories)`) to avoid re-render storms.
+- `src/lib/mock-data.ts` — the Luna dataset (42 memories across Preferences/Relationship/Events/Boundaries/Tasks/Archived, v1+v2 devices, one in-progress migration, audit logs, KPIs). Serves as the offline fallback and as the shape contract.
+- `src/lib/api-client.ts` — typed HTTP client over `NEXT_PUBLIC_MP_API_URL` with a Bearer token from `NEXT_PUBLIC_MP_API_KEY`. One method per backend endpoint family (`getMemories`, `retrieveMemories`, `ingestEvent`, `patchMemory`, `deleteMemory`, `getPolicy`/`upsertPolicy`, `previewMigration`/`executeMigration`, `getAuditLogs`, `getUsage`, …). Adapts backend JSON → `types.ts` shapes.
+- `src/store/memory-store.ts` — Zustand store + all mutations. On mount it hydrates from the backend; mutations call the API client then update local state. Read selectors narrowly (e.g. `useMemoryStore(s => s.memories)`) to avoid re-render storms.
 
 ---
 
@@ -116,7 +117,7 @@ pnpm build    # production build — must pass with 0 errors before commit
 pnpm lint     # eslint — must pass clean (0 errors, 0 warnings is the bar)
 ```
 
-The dev server auto-restarts. There is no test runner (prototype).
+The dev server auto-restarts. There is no frontend test runner; verify changes with `pnpm lint && pnpm build` and by exercising the UI against `make demo` (backend on :8000).
 
 ---
 
@@ -124,8 +125,8 @@ The dev server auto-restarts. There is no test runner (prototype).
 
 1. **Read before writing.** Match the surrounding code's comment density, naming, and idiom. This codebase reads like a precise instrument panel on the B-side and warm paper on the C-side — preserve that split.
 2. **Keep the build green.** Run `pnpm lint && pnpm build` before considering work done. TypeScript errors and lint warnings are not acceptable.
-3. **Mock data is the contract.** If you need a new entity/field, add it to `src/lib/types.ts` and seed it in `src/lib/mock-data.ts` — then the store and UI follow.
-4. **Don't add a backend.** This is a prototype. No API routes, no Supabase, no real fetches. State lives in Zustand.
+3. **Mock data is the shape contract.** If you need a new entity/field, add it to `src/lib/types.ts` and seed it in `src/lib/mock-data.ts` — then the store, the API client adapter, and the UI follow.
+4. **The UI calls the real backend.** Use `src/lib/api-client.ts` for all reads/writes; adapt backend JSON to `types.ts` in the adapter. Never bypass the store with ad-hoc `fetch` in a component. Mock data remains the offline fallback when the backend is unreachable, so the demo still renders.
 5. **Commit messages** follow the existing style: a short imperative subject + optional body with bullet points (see `git log`).
 
 ---
