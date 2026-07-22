@@ -10,7 +10,7 @@ This file guides AI agents (Claude Code, etc.) working in the Memory Passport re
 
 **Memory Passport** — a B2B2C portable memory infrastructure for AI companions and robots. The one-liner: **"换设备，不换关系；换模型，不换记忆"** (switch devices, not relationships; switch models, not memory).
 
-- The web UI is wired to the real FastAPI backend at `NEXT_PUBLIC_MP_API_URL` (default `http://127.0.0.1:8000`) via the API client in `src/lib/api-client.ts`. When the backend is unreachable, the store transparently falls back to the seeded mock dataset in `src/lib/mock-data.ts` so the UI keeps rendering. See `src/store/memory-store.ts`.
+- The browser calls the same-origin `/api/mp/*` product gateway via `src/lib/api-client.ts`; only the server-only gateway reads `MP_API_URL` / `MP_API_KEY` and attaches the tenant credential to FastAPI requests. When authenticated hydration fails, the store visibly falls back to the seeded mock dataset and blocks authoritative memory edits. See `src/server/mp-gateway.ts` and `src/store/memory-store.ts`.
 - The canonical demo story is **Luna** — a hybrid (software + robot) companion app. Luna Robot v1→v2 migration is the **wedge** (the hero moment).
 - Full PRD lives at `docs/prds/Memory Passport PRD v2.0.md` — read it for strategy/data model/API. The PRD has been aligned to this prototype (Appendix C records the diff vs the original draft).
 
@@ -25,7 +25,7 @@ This file guides AI agents (Claude Code, etc.) working in the Memory Passport re
 - **framer-motion** for animation (minimal & functional — only the migration-complete page has an "earned" signature animation).
 - **Recharts** for the Overview activity chart.
 - **lucide-react** for icons (default 16px, `strokeWidth={1.5}`).
-- **Zustand** store at `src/store/memory-store.ts` — single store. Initial state is the seeded Luna dataset from `src/lib/mock-data.ts`; on mount the store hydrates from the real backend via the `src/lib/api-client.ts` HTTP client (base URL + API key from `NEXT_PUBLIC_MP_API_URL` / `NEXT_PUBLIC_MP_API_KEY`). All mutations call the backend and update local state on success.
+- **Zustand** store at `src/store/memory-store.ts` — single store. Initial state is the seeded Luna dataset from `src/lib/mock-data.ts`; on mount the store hydrates through the same-origin product gateway. Authoritative memory edits wait for the backend and render its returned version; failures preserve the last saved state.
 - **sonner** toasts — there is one global `<Toaster />` in the root layout. Use `import { toast } from "sonner"`. Do NOT mount a local `<Toaster />` per page.
 - **next-themes** for dark/light. Console defaults to dark; C-side forces light via `.paper-surface`.
 
@@ -90,7 +90,7 @@ Two App Router groups + a landing page. **Every route is real and clickable — 
 
 - `src/lib/types.ts` — every domain entity (User, Agent, Device, Relationship, MemoryRecord with portability + model_provenance, Migration, etc.). **The source of truth for shapes.**
 - `src/lib/mock-data.ts` — the Luna dataset (42 memories across Preferences/Relationship/Events/Boundaries/Tasks/Archived, v1+v2 devices, one in-progress migration, audit logs, KPIs). Serves as the offline fallback and as the shape contract.
-- `src/lib/api-client.ts` — typed HTTP client over `NEXT_PUBLIC_MP_API_URL` with a Bearer token from `NEXT_PUBLIC_MP_API_KEY`. One method per backend endpoint family (`getMemories`, `retrieveMemories`, `ingestEvent`, `patchMemory`, `deleteMemory`, `getPolicy`/`upsertPolicy`, `previewMigration`/`executeMigration`, `getAuditLogs`, `getUsage`, …). Adapts backend JSON → `types.ts` shapes.
+- `src/lib/api-client.ts` — typed browser HTTP client over the same-origin `/api/mp` gateway. It never reads or sends a tenant credential. One method per backend endpoint family (`getMemories`, `retrieveMemories`, `ingestEvent`, `patchMemory`, `deleteMemory`, `getPolicy`/`upsertPolicy`, `previewMigration`/`executeMigration`, `getAuditLogs`, `getUsage`, …). Adapts backend JSON → `types.ts` shapes.
 - `src/store/memory-store.ts` — Zustand store + all mutations. On mount it hydrates from the backend; mutations call the API client then update local state. Read selectors narrowly (e.g. `useMemoryStore(s => s.memories)`) to avoid re-render storms.
 
 ---

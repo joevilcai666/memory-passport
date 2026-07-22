@@ -32,7 +32,11 @@ POC 验收。
 - `make`、`curl` 和 Python 3。
 
 只有要查看网页原型或运行前端检查时，才需要 Node.js 22+ 和 pnpm 10+。
-Windows 客户建议在 WSL2 中执行下面的命令。
+Windows 客户应在 WSL2 中执行完整的 `make demo` 流程，并把仓库克隆到 WSL
+文件系统（如 `~/src`，不要放在 `/mnt/c`）。如果只能使用原生 PowerShell，
+可以不用 Make 或宿主机 Bash，按
+[`docs/windows.md`](docs/windows.md) 中的 Compose 等价路径启动，并验证
+`mp`/`hms` 角色、数据库和健康状态。
 
 先检查环境：
 

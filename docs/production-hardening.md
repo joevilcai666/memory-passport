@@ -122,7 +122,8 @@ data.
 (`memory_passport` + `hms`) in Postgres custom format to a timestamped
 directory under `./backups/` (configurable via `BACKUP_DIR`).
 [`scripts/restore.sh`](../scripts/restore.sh) replays a snapshot — it drops +
-recreates both databases, then `pg_restore`s.
+recreates both databases, restores them atomically, and refuses to report
+success until database and application verification pass.
 
 ```bash
 make backup                              # → ./backups/<UTC timestamp>/
@@ -131,9 +132,32 @@ make restore STAMP=20260721T020000Z      # destructive; asks for confirmation
 ```
 
 Both run `pg_dump`/`pg_restore` inside the `postgres` container, so no local
-psql install is required. Restore force-disconnects live sessions (so it works
-even if you forgot to stop `mp-backend`), but for a clean window prefer
-`make down` first.
+psql install is required. Restore is an exclusive maintenance operation:
+
+1. It parses both archives before making changes and asks the operator to type
+   the MP database name.
+2. It discovers and stops the configured `mp-backend`, `hms-api`, and (in real
+   mode) `hms-worker` services before dropping a database. Service-role
+   connections stay revoked throughout the destructive window.
+3. It recreates each database with its least-privilege service owner, creates
+   `vector` as the privileged Postgres backup role, and replays the archive as
+   that role with `--exit-on-error --single-transaction`. The archive's
+   original object owners are restored; `mp`/`hms` never need extension-create
+   privilege and must remain non-superusers.
+4. It verifies the `vector` version/owner, MP Alembic head, required MP and HMS
+   tables/indexes, representative row counts, database/relation ownership, and
+   service-role access. Only then does it grant service-role `CONNECT`, restart
+   the configured applications, and require `GET /v1/health` to succeed.
+
+Any archive, extension, schema, ownership, data-query, startup, or health error
+exits non-zero and never prints `restore complete`.
+
+**Interrupted/failed restore recovery.** The failure trap stops application
+writers again and revokes `CONNECT` from both service roles. Leave that lock in
+place: correct the reported cause (for example, replace a corrupt dump or make
+the `vector` extension available to the privileged Postgres role), then rerun
+the same `make restore STAMP=...`. Do not manually restart services or grant
+database access to make health look green; the rerun must pass every gate.
 
 **Schedule.** The script is cron-friendly — no flags needed for the default
 `./backups/` target. Example nightly at 02:00 UTC:
@@ -143,9 +167,31 @@ even if you forgot to stop `mp-backend`), but for a clean window prefer
 ```
 
 **Test the restore.** A backup you've never restored is a hope, not a backup.
-On a fresh stack, run `make demo` → `make backup` → `make clean` →
-`make restore STAMP=<…>` → re-run the demo smoke test and confirm the counts
-match. Do this once before you trust the schedule.
+Run the non-destructive command/failure-path suite on every change:
+
+```bash
+make test-restore
+```
+
+Before trusting a schedule, run the opt-in end-to-end proof:
+
+```bash
+make test-restore-roundtrip
+```
+
+That test never uses the default Compose project. It creates a uniquely named
+`mp-restore-it-*` project with its own Postgres volume, ports, and temporary
+backup directory; ingests a sentinel; backs up; mutates MP text, the MP↔HMS
+mapping, audit data, and HMS text; restores; then proves memory text,
+retrieval, mapping, Alembic head, audit, HMS data, and health returned. Its
+validated cleanup trap removes only that isolated project and volume. The
+first run may need to build the backend image and therefore needs package-index
+access. If a known-good backend image already exists locally, the same isolated
+test can avoid package-index access without reusing the default project's data:
+
+```bash
+MP_RESTORE_TEST_BACKEND_IMAGE=memory-passport-mp-backend make test-restore-roundtrip
+```
 
 **Retention.** The script keeps every backup forever; retention is the
 operator's responsibility. Pair with a prune job

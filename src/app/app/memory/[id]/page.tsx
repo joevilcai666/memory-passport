@@ -15,6 +15,7 @@ import {
   Check,
   ShieldAlert,
   History,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
@@ -47,7 +48,15 @@ export default function MemoryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const { memories, devices, editMemory, deleteMemory, setMemoryStatus } = useMemoryStore();
+  const {
+    memories,
+    devices,
+    editMemory,
+    deleteMemory,
+    setMemoryStatus,
+    memoryMutationPending,
+    memoryMutationError,
+  } = useMemoryStore();
 
   const memory = memories.find((m) => m.id === id);
 
@@ -74,10 +83,20 @@ export default function MemoryDetailPage() {
   const confidenceLabel =
     memory.confidence >= 0.9 ? "High" : memory.confidence >= 0.75 ? "Medium" : "Low";
 
-  const handleEdit = () => {
-    editMemory(memory.id, editText.trim());
+  const handleEdit = async () => {
+    const saved = await editMemory(memory.id, editText.trim());
+    if (!saved) {
+      const description =
+        useMemoryStore.getState().memoryMutationError ??
+        "The last saved version is still shown.";
+      toast.error("Memory was not updated", { description });
+      return;
+    }
     setEditOpen(false);
-    toast.success("Memory updated", { description: "Luna will use the new version." });
+    router.replace(`/app/memory/${encodeURIComponent(saved.id)}`);
+    toast.success("Memory updated", {
+      description: `Luna will use server version v${saved.version}.`,
+    });
   };
 
   const handleDelete = () => {
@@ -222,9 +241,20 @@ export default function MemoryDetailPage() {
             <DialogDescription>Luna will use your edited version going forward.</DialogDescription>
           </DialogHeader>
           <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} />
+          {memoryMutationError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+            >
+              {memoryMutationError}
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={!editText.trim()}>Save</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={memoryMutationPending}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={!editText.trim() || memoryMutationPending}>
+              {memoryMutationPending && <Loader2 className="size-3.5 animate-spin" />}
+              {memoryMutationPending ? "Saving…" : "Save"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

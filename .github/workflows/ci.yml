@@ -1,14 +1,15 @@
-# Memory Passport CI — mirrors the first four steps of `make check`.
+# Memory Passport CI — mirrors the host-only steps of `make check`.
 #
 # What this runs (unit-only, fast):
-#   1. pnpm install (frozen lockfile)
-#   2. pnpm lint
-#   3. pnpm build
-#   4. ruff check app tests
-#   5. pytest -m 'not postgres and not hms and not compose'
+#   1. Unix script portability validation
+#   2. pnpm install (frozen lockfile)
+#   3. pnpm lint
+#   4. pnpm build
+#   5. ruff check app tests
+#   6. pytest -m 'not postgres and not hms and not compose'
 #
 # What this does NOT run (local-only, per issue #15):
-#   - the Docker Compose stack (steps 5–6 of `make check`) — those require a
+#   - the final Docker Compose steps of `make check` — those require a
 #     running postgres + hms-api and the full image build. `make check` remains
 #     the authoritative gate for that integration coverage.
 #
@@ -36,6 +37,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Validate Unix script portability
+        run: python3 scripts/check_line_endings.py
 
       # ---- Frontend (Next.js 16 + React 19) --------------------------------
       - name: Setup pnpm

@@ -26,6 +26,11 @@ Requirements for the API demo: Docker Desktop/Engine with either
 22+ and pnpm 10+ are only required for the optional frontend and frontend
 release checks.
 
+On Windows, use WSL2 for the full `make demo` path. Native PowerShell can run
+an equivalent Compose/bootstrap/health check without Make or host Bash; see
+[`docs/windows.md`](docs/windows.md) for the exact supported commands and
+executable-bit behavior.
+
 ```bash
 git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport

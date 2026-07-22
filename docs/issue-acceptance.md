@@ -1,6 +1,7 @@
 # GitHub Issue Acceptance Evidence
 
-This matrix records the local evidence for V0.1 issues #2–#10. All tests run
+This matrix records the local evidence for V0.1 issues #2–#10 and restore
+reliability issue #36. Most tests run
 without GitHub Actions. Host tests use SQLite/respx; the final Compose command
 runs the same suite with PostgreSQL and the live HMS-compatible service.
 
@@ -49,6 +50,11 @@ make demo
 | #10 | Wrong/expired token and sanitized failed job | download/failure tests in `tests/test_data_ops.py` |
 | #10 | HMS bank deletion, tombstones, mapping removal, passport revoke, empty retrieve, one summary audit | `test_delete_user_cascades_and_retrieve_short_circuits_hms` |
 | #10 | Explicit cross-tenant 403 | `test_data_operations_explicitly_forbid_cross_tenant_users` |
+| #36 Restore | Corrupt archive and unexpected `pg_restore` failure exit non-zero without completion | `make test-restore`: `corrupt archive is rejected before database drop`, `pg_restore failure fails closed` |
+| #36 | Exclusive writer stop, privileged vector creation, atomic archive replay | `make test-restore`: service-order and privileged-extension command tests |
+| #36 | Extension/Alembic/tables/indexes/counts/ownership/access/health gate | `make test-restore`: `completion is gated on database and health verification` |
+| #36 | Extension failure is actionable and leaves writers stopped/connections locked | `make test-restore`: `extension failure fails closed with recovery instructions` |
+| #36 | Backup → mutate → restore proves MP text/mapping/retrieval/migration/audit plus HMS data | `make test-restore-roundtrip` (unique disposable Compose project; opt-in integration gate) |
 
 ## Cross-cutting local evidence
 

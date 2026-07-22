@@ -1,7 +1,8 @@
 // ============================================================================
 // Memory Passport — typed HTTP client over the FastAPI backend.
 //
-// Base URL + API key come from NEXT_PUBLIC_MP_API_URL / NEXT_PUBLIC_MP_API_KEY.
+// Browser requests stay same-origin. The server-only MP gateway owns the
+// upstream URL and tenant credential.
 // Every method maps a backend endpoint to the shapes in src/lib/types.ts.
 // The backend response schemas mirror types.ts 1:1 (see
 // backend/app/schemas/provisioning.py — "mirror src/lib/types.ts interfaces
@@ -22,11 +23,7 @@ import type {
   UsageBundle,
 } from "@/lib/types";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_MP_API_URL ?? "http://127.0.0.1:8000";
-const API_KEY =
-  process.env.NEXT_PUBLIC_MP_API_KEY ??
-  "mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd";
+const BASE_URL = "/api/mp";
 
 /** Raised on any non-2xx backend response, or on a network failure. */
 export class ApiError extends Error {
@@ -44,9 +41,13 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${BASE_URL}${path}`;
+  // Keep every browser request on the product origin. Accepting absolute URLs
+  // here would let future callers silently bypass the server-only gateway.
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new ApiError(`Memory Passport path must be same-origin: ${path}`);
+  }
+  const url = `${BASE_URL}${path}`;
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${API_KEY}`);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -54,9 +55,9 @@ async function request<T>(
   try {
     res = await fetch(url, { ...init, headers, cache: "no-store" });
   } catch (err) {
-    // Network-level failure (backend down, DNS, CORS preflight rejected).
+    // Network-level failure reaching the same-origin product gateway.
     throw new ApiError(
-      `Network error reaching backend at ${BASE_URL}: ${
+      `Network error reaching Memory Passport gateway: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -64,7 +65,7 @@ async function request<T>(
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new ApiError(
-      `Backend ${res.status} ${res.statusText} for ${path}${
+      `Memory Passport ${res.status} ${res.statusText} for ${path}${
         detail ? ` — ${detail.slice(0, 200)}` : ""
       }`,
       res.status,
@@ -189,7 +190,9 @@ export const api = {
 
   async getMigration(migrationId: string): Promise<Migration | null> {
     try {
-      return await request<Migration>(`/v1/migrations/${migrationId}`);
+      return await request<Migration>(
+        `/v1/migrations/${encodeURIComponent(migrationId)}`,
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
       throw err;
@@ -226,14 +229,16 @@ export const api = {
     id: string,
     patch: { content?: string; status?: string },
   ): Promise<MemoryRecord> {
-    return request(`/v1/memories/${id}`, {
+    return request(`/v1/memories/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     });
   },
 
   async deleteMemory(id: string): Promise<MemoryRecord> {
-    return request(`/v1/memories/${id}`, { method: "DELETE" });
+    return request(`/v1/memories/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async upsertPolicy(input: PolicyUpsertInput): Promise<MemoryPolicy> {
@@ -278,7 +283,7 @@ export const api = {
   },
 
   async rollbackMigration(migrationId: string): Promise<Migration> {
-    return request(`/v1/migrations/${migrationId}/rollback`, {
+    return request(`/v1/migrations/${encodeURIComponent(migrationId)}/rollback`, {
       method: "POST",
     });
   },

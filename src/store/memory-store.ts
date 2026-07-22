@@ -68,6 +68,8 @@ interface MemoryStore {
   // backend sync state
   hydrated: boolean;
   backendReachable: boolean;
+  memoryMutationPending: boolean;
+  memoryMutationError: string | null;
   hydrate: () => Promise<void>;
 
   // ui prefs
@@ -80,7 +82,7 @@ interface MemoryStore {
   setMaxMemoriesPerResponse: (n: number) => void;
   toggleSensitiveInPrompt: () => void;
 
-  editMemory: (id: string, content: string) => void;
+  editMemory: (id: string, content: string) => Promise<MemoryRecord | null>;
   setMemoryStatus: (id: string, status: MemoryStatus) => void;
   deleteMemory: (id: string) => void;
   addMemory: (content: string, type: MemoryRecord["type"]) => void;
@@ -172,6 +174,8 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
 
   hydrated: false,
   backendReachable: false,
+  memoryMutationPending: false,
+  memoryMutationError: null,
 
   // ---- hydration ---------------------------------------------------------
   /**
@@ -199,12 +203,16 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
     set((s) => {
       const next: Partial<MemoryStore> = {
         hydrated: true,
-        backendReachable: true,
+        // Health is intentionally public. The authenticated memories read is
+        // the authoritative connectivity check for this tenant.
+        backendReachable: memoriesR.status === "fulfilled",
       };
-      if (memoriesR.status === "fulfilled" && memoriesR.value.length > 0) {
+      if (memoriesR.status === "fulfilled") {
         next.memories = memoriesR.value;
-        // the quickstart "sent first event" step is satisfied if any memory exists
-        next.quickstart = { ...s.quickstart, firstEventSent: true, testUserCreated: true };
+        if (memoriesR.value.length > 0) {
+          // the quickstart "sent first event" step is satisfied if any memory exists
+          next.quickstart = { ...s.quickstart, firstEventSent: true, testUserCreated: true };
+        }
       }
       if (auditR.status === "fulfilled" && auditR.value.length > 0) {
         next.auditLogs = auditR.value;
@@ -319,15 +327,32 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       return { policy };
     }),
 
-  editMemory: (id, content) => {
-    set((s) => ({
-      memories: s.memories.map((m) =>
-        m.id === id ? { ...m, content, version: m.version + 1 } : m,
-      ),
-      auditLogs: pushAudit(s.auditLogs, "Mia Chen", "memory.edited", id, "Content edited by user"),
-    }));
-    if (canCallBackend(get())) {
-      void syncOrToast(() => api.patchMemory(id, { content }), `edit ${id}`);
+  editMemory: async (id, content) => {
+    if (!canCallBackend(get())) {
+      set({
+        memoryMutationError:
+          "Memory Passport is unavailable. Your edit was not saved.",
+      });
+      return null;
+    }
+    set({ memoryMutationPending: true, memoryMutationError: null });
+    try {
+      const saved = await api.patchMemory(id, { content });
+      set((s) => ({
+        memories: s.memories.map((memory) =>
+          memory.id === id ? saved : memory,
+        ),
+      }));
+      return saved;
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Memory Passport rejected the edit";
+      set({ memoryMutationError: `${message}. Your edit was not saved.` });
+      return null;
+    } finally {
+      set({ memoryMutationPending: false });
     }
   },
 

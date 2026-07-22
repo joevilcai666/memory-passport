@@ -24,9 +24,9 @@ export function StoreHydrator() {
       // extra reactive subscription (the banner only needs to fire once).
       const reachable = useMemoryStore.getState().backendReachable;
       if (!reachable) {
-        toast.warning("Backend offline — showing demo data", {
+        toast.warning("Memory Passport unavailable — showing demo data", {
           description:
-            "Start the backend with `make demo` and reload to see live data. Mutations stay local until then.",
+            "Start the backend and check the server-only MP_API_KEY, then reload. Memory edits are blocked until live data is available.",
           duration: Infinity,
           closeButton: true,
         });

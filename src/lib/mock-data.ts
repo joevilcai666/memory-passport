@@ -62,7 +62,7 @@ export const app: App = {
       id: "key_sb_1",
       label: "Sandbox — Default",
       environment: "sandbox",
-      key: "mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd",
+      key: "mp_sandbox_••••••••••••••••••••••••",
       created_at: daysAgo(28),
       last_used_at: minsAgo(12),
     },

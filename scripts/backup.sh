@@ -25,8 +25,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_DIR"
 
+# Match Docker Compose's precedence: explicitly exported caller values must win
+# over repository `.env` defaults (important for isolated projects/backups).
+ENV_OVERRIDE_NAMES=()
+ENV_OVERRIDE_VALUES=()
+for name in \
+  BACKUP_DIR POSTGRES_USER POSTGRES_PASSWORD MP_DB_NAME HMS_DB_NAME \
+  COMPOSE_FILE COMPOSE_PROJECT_NAME MP_PORT HMS_LOCAL_API_PORT; do
+  if declare -p "$name" >/dev/null 2>&1; then
+    ENV_OVERRIDE_NAMES+=("$name")
+    ENV_OVERRIDE_VALUES+=("${!name}")
+  fi
+done
 # shellcheck disable=SC1091
 [ -f .env ] && set -a && . ./.env && set +a
+for ((i = 0; i < ${#ENV_OVERRIDE_NAMES[@]}; i++)); do
+  printf -v "${ENV_OVERRIDE_NAMES[$i]}" '%s' "${ENV_OVERRIDE_VALUES[$i]}"
+  export "${ENV_OVERRIDE_NAMES[$i]}"
+done
+unset ENV_OVERRIDE_NAMES ENV_OVERRIDE_VALUES name i
 
 BACKUP_DIR="${BACKUP_DIR:-$REPO_DIR/backups}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"

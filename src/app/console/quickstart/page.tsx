@@ -47,12 +47,6 @@ export default function QuickstartPage() {
   const [sendingEvent, setSendingEvent] = React.useState(false);
   const [retrieving, setRetrieving] = React.useState(false);
 
-  // Prefer the real backend key exposed to the browser via env; fall back to
-  // the seeded sandbox key baked into mock-data, then to a placeholder.
-  const seedSandboxKey = app.api_keys.find((k) => k.environment === "sandbox")?.key;
-  const sandboxKey =
-    process.env.NEXT_PUBLIC_MP_API_KEY ?? seedSandboxKey ?? "mp_sandbox_xxx";
-
   const handleSendEvent = () => {
     setSendingEvent(true);
     setTimeout(() => {
@@ -149,11 +143,13 @@ export default function QuickstartPage() {
 
         {/* Step 2 */}
         <StepCard step={2} title="Initialize" icon={KeyRound} done>
-          <p className="text-sm text-muted-foreground">Use your sandbox key. It&apos;s safe to ship to the client.</p>
+          <p className="text-sm text-muted-foreground">
+            Initialize from your server runtime. Tenant keys must never ship to a browser.
+          </p>
           <CodeBlock lang="typescript">{`import { MemoryPassport } from "@memory-passport/client";
 
 const mp = new MemoryPassport({
-  apiKey: "${sandboxKey}",
+  apiKey: process.env.MP_API_KEY,
   appId: "${app.id}",
 });`}</CodeBlock>
         </StepCard>
