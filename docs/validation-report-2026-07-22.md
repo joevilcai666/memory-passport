@@ -31,7 +31,7 @@ Remediation baseline: `artifacts/remediation-2026-07-22/baseline.txt`
 
 | # | Issue | Acceptance evidence | Focused test | Status | Commit | Runtime proof |
 |---|---|---|---|---|---|---|
-| 1 | Browser CORS preflight blocked | Allowed local origin receives valid preflight; unlisted origin does not | `backend/tests/test_cors.py` | open | — | baseline currently returns `401` before route dispatch |
+| 1 | Browser CORS preflight blocked | Allowed local origin receives valid preflight; unlisted origin does not | `backend/tests/test_cors.py` | verified | `a47b7f7` | host/container tests pass; live preflight `200`, authenticated browser-origin GET `200` |
 | 2 | False-positive frontend success | Failed/skipped requests never mutate state or show success; successful state survives reload | API-client, store, component, browser tests | open | — | API and Postgres assertions pending |
 | 3 | Windows CRLF breaks shell entrypoints | Autocrlf-enabled fresh clone retains LF and passes `bash -n` | `scripts/verify-line-endings.ps1` + Windows CI | open | — | fresh-clone proof pending |
 | 4 | Restore can omit pgvector and swallow failure | Restore exits zero only with vector, owner access, and exact row parity | `scripts/verify-restore.sh` | open | — | destructive round trip pending |
