@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Browser runtime probe</title>
+  </head>
+  <body>
+    <button id="probe" type="button">idle</button>
+    <p id="inline">inline-not-run</p>
+    <p id="external">external-not-run</p>
+    <script>
+      window.__inlineProbe = "executed";
+      document.querySelector("#inline").textContent = "inline-ran";
+      document.querySelector("#probe").addEventListener("click", () => {
+        document.querySelector("#probe").textContent = "clicked";
+      });
+    </script>
+    <script src="browser-runtime-probe.js"></script>
+  </body>
+</html>
