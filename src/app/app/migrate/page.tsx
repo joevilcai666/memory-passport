@@ -13,6 +13,7 @@ import {
   Cpu,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,14 @@ export default function MigrationPreviewPage() {
   const router = useRouter();
   const { memories, migration, selectMigrationMemory, setOldDeviceAccess, executeMigration } =
     useMemoryStore();
+  const dataMode = useMemoryStore((state) => state.dataMode);
+  const [moving, setMoving] = React.useState(false);
 
   // Already migrated → redirect to complete
   React.useEffect(() => {
-    if (migration.status === "completed") router.replace("/app/migrate/complete");
+    if (migration.status === "completed" || migration.status === "completed_with_warnings") {
+      router.replace("/app/migrate/complete");
+    }
   }, [migration.status, router]);
 
   // Bucket the memories
@@ -51,7 +56,10 @@ export default function MigrationPreviewPage() {
   }, [memories, migration.source_relationship_id]);
 
   const selectedCount = migration.selected_memory_ids.length;
-  const skippedCount = notMoved.length + (needsReview.length - migration.selected_memory_ids.filter(id => needsReview.some(n => n.id === id)).length);
+  const portableMemories = [...recommended, ...needsReview];
+  const skippedCount =
+    notMoved.length +
+    portableMemories.filter((memory) => !migration.selected_memory_ids.includes(memory.id)).length;
 
   const allRecommendedSelected = recommended.every((m) =>
     migration.selected_memory_ids.includes(m.id),
@@ -65,11 +73,25 @@ export default function MigrationPreviewPage() {
     });
   };
 
-  const handleMove = () => {
-    // capture the stamps to animate before navigating
-    executeMigration();
-    toast.success("Migration started", { description: `${selectedCount} memories moving…` });
-    setTimeout(() => router.push("/app/migrate/complete"), 400);
+  const handleMove = async () => {
+    setMoving(true);
+    try {
+      const completed = await executeMigration();
+      const failedCount = completed.failed_memory_ids.length;
+      toast.success(failedCount > 0 ? "Migration completed with warnings" : "Migration completed", {
+        description:
+          failedCount > 0
+            ? `${failedCount} ${failedCount === 1 ? "memory" : "memories"} could not be moved.`
+            : `${completed.selected_memory_ids.length} memories processed.`,
+      });
+      router.push("/app/migrate/complete");
+    } catch (error) {
+      toast.error("Migration failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setMoving(false);
+    }
   };
 
   return (
@@ -230,12 +252,18 @@ export default function MigrationPreviewPage() {
           <Button
             size="lg"
             className="w-full"
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || moving || dataMode !== "live"}
             onClick={handleMove}
           >
-            <StampMark className="size-4 text-primary-foreground" />
-            Move {selectedCount} {selectedCount === 1 ? "memory" : "memories"}
-            <ArrowRight className="size-4" />
+            {moving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <StampMark className="size-4 text-primary-foreground" />
+            )}
+            {moving
+              ? "Moving memories..."
+              : `Move ${selectedCount} ${selectedCount === 1 ? "memory" : "memories"}`}
+            {!moving ? <ArrowRight className="size-4" /> : null}
           </Button>
           <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground/70">
             <ShieldCheck className="size-3" />
@@ -290,19 +318,14 @@ function Bucket({
   }[accent];
 
   return (
-    <div className="rounded-2xl border bg-card overflow-hidden">
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen((o) => !o);
-          }
-        }}
-        className="flex w-full cursor-pointer items-center gap-3 p-4 text-left transition-colors hover:bg-accent/40"
-      >
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 p-4 text-left transition-colors hover:bg-accent/40"
+        >
         <div className={cn("flex size-8 items-center justify-center rounded-lg", accentBg)}>
           <Icon className={cn("size-4", iconColor)} strokeWidth={1.5} />
         </div>
@@ -311,8 +334,9 @@ function Bucket({
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
         <span className="tabular text-xs font-medium text-muted-foreground">{count}</span>
-        {action}
         {open ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
+        </button>
+        {action ? <div className="shrink-0 pr-4">{action}</div> : null}
       </div>
       <AnimatePresence initial={false}>
         {open && (

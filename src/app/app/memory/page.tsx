@@ -2,12 +2,21 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Download, Trash2, Smartphone, Pause, Play, MoreHorizontal, Search } from "lucide-react";
+import { Plus, Download, Trash2, Smartphone, Pause, Play, MoreHorizontal, Search, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { MemoryCard } from "@/components/memory/MemoryCard";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -31,9 +40,15 @@ const typeFilters: { value: MemoryType | "all" | "archived"; label: string }[] =
 ];
 
 export default function MemoryCenterPage() {
-  const { memories, currentUser, toggleMemoryEnabled } = useMemoryStore();
+  const { memories, currentUser, setMemoryEnabled, addMemory, exportMemories, dataMode } =
+    useMemoryStore();
   const [filter, setFilter] = React.useState<MemoryType | "all" | "archived">("all");
   const [query, setQuery] = React.useState("");
+  const [consentSaving, setConsentSaving] = React.useState(false);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [newMemory, setNewMemory] = React.useState("");
+  const [adding, setAdding] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   const memoryOn = currentUser.memory_enabled;
 
@@ -61,11 +76,60 @@ export default function MemoryCenterPage() {
     );
   }, [memories, filter, query]);
 
-  const handlePause = () => {
-    toggleMemoryEnabled();
-    toast(memoryOn ? "Memory paused" : "Memory is on", {
-      description: memoryOn ? "Luna won't write new memories." : "Luna will remember again.",
-    });
+  const handlePause = async () => {
+    setConsentSaving(true);
+    try {
+      await setMemoryEnabled(!memoryOn);
+      toast.success(memoryOn ? "Memory paused" : "Memory is on", {
+        description: memoryOn ? "Luna won't write new memories." : "Luna will remember again.",
+      });
+    } catch (error) {
+      toast.error(memoryOn ? "Could not pause memory" : "Could not resume memory", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setConsentSaving(false);
+    }
+  };
+
+  const handleAddMemory = async () => {
+    const content = newMemory.trim();
+    if (!content) return;
+    setAdding(true);
+    try {
+      await addMemory(content, "preference");
+      setNewMemory("");
+      setAddOpen(false);
+      toast.success("Memory saved", { description: "Luna can now use this explicit memory." });
+    } catch (error) {
+      toast.error("Could not save memory", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const result = await exportMemories();
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `memory-passport-${result.export_id}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded", { description: `${counts.all} active memories · JSON` });
+    } catch (error) {
+      toast.error("Could not export memories", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -96,8 +160,13 @@ export default function MemoryCenterPage() {
                 <Smartphone className="size-3.5" /> Devices
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.success("Export started", { description: "42 memories · JSON" })}>
-              <Download className="size-3.5" /> Export
+            <DropdownMenuItem onClick={handleExport} disabled={exporting || dataMode !== "live"}>
+              {exporting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              Export
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
@@ -122,11 +191,29 @@ export default function MemoryCenterPage() {
 
         {/* Pause / Add */}
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1" onClick={handlePause}>
-            {memoryOn ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-            {memoryOn ? "Pause" : "Resume"}
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={handlePause}
+            disabled={consentSaving || dataMode !== "live"}
+          >
+            {consentSaving ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : memoryOn ? (
+              <Pause className="size-3.5" />
+            ) : (
+              <Play className="size-3.5" />
+            )}
+            {consentSaving ? (memoryOn ? "Pausing..." : "Resuming...") : memoryOn ? "Pause" : "Resume"}
           </Button>
-          <Button variant="outline" size="sm" className="flex-1" onClick={() => toast("Tell Luna to remember something", { description: "Try: \"Remember that I prefer…\"" })}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => setAddOpen(true)}
+            disabled={dataMode !== "live"}
+          >
             <Plus className="size-3.5" />
             Tell Luna
           </Button>
@@ -181,6 +268,37 @@ export default function MemoryCenterPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={addOpen} onOpenChange={(open) => !adding && setAddOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tell Luna to remember</DialogTitle>
+            <DialogDescription>
+              This creates an explicit memory in your Passport. You can edit or delete it later.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="new-memory" className="text-sm font-medium">
+            Memory to save
+          </label>
+          <Textarea
+            id="new-memory"
+            value={newMemory}
+            onChange={(event) => setNewMemory(event.target.value)}
+            placeholder="I prefer jasmine tea."
+            rows={3}
+            disabled={adding}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddMemory} disabled={!newMemory.trim() || adding}>
+              {adding ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              {adding ? "Saving..." : "Remember this"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

@@ -15,6 +15,7 @@ import {
   Check,
   ShieldAlert,
   History,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
@@ -47,13 +48,14 @@ export default function MemoryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const { memories, devices, editMemory, deleteMemory, setMemoryStatus } = useMemoryStore();
+  const { memories, devices, editMemory, deleteMemory, setMemoryStatus, dataMode } = useMemoryStore();
 
   const memory = memories.find((m) => m.id === id);
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [editText, setEditText] = React.useState("");
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [activeAction, setActiveAction] = React.useState<"edit" | "delete" | "report" | null>(null);
 
   if (!memory) {
     return (
@@ -74,17 +76,51 @@ export default function MemoryDetailPage() {
   const confidenceLabel =
     memory.confidence >= 0.9 ? "High" : memory.confidence >= 0.75 ? "Medium" : "Low";
 
-  const handleEdit = () => {
-    editMemory(memory.id, editText.trim());
-    setEditOpen(false);
-    toast.success("Memory updated", { description: "Luna will use the new version." });
+  const handleEdit = async () => {
+    setActiveAction("edit");
+    try {
+      await editMemory(memory.id, editText.trim());
+      setEditOpen(false);
+      toast.success("Memory updated", { description: "Luna will use the new version." });
+    } catch (error) {
+      toast.error("Could not update memory", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setActiveAction(null);
+    }
   };
 
-  const handleDelete = () => {
-    deleteMemory(memory.id);
-    setDeleteOpen(false);
-    toast.success("Memory deleted", { description: "Removed from Luna's recall." });
-    router.push("/app/memory");
+  const handleDelete = async () => {
+    setActiveAction("delete");
+    try {
+      await deleteMemory(memory.id);
+      setDeleteOpen(false);
+      toast.success("Memory deleted", { description: "Removed from Luna's recall." });
+      router.push("/app/memory");
+    } catch (error) {
+      toast.error("Could not delete memory", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const handleReport = async () => {
+    setActiveAction("report");
+    try {
+      await setMemoryStatus(memory.id, "flagged_wrong");
+      toast.success("Reported as wrong", {
+        description: "Luna will stop using it while reviewed.",
+      });
+    } catch (error) {
+      toast.error("Could not report memory", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setActiveAction(null);
+    }
   };
 
   return (
@@ -183,6 +219,7 @@ export default function MemoryDetailPage() {
           <Button
             variant="outline"
             size="sm"
+            disabled={activeAction !== null || dataMode !== "live"}
             onClick={() => {
               setEditText(memory.content);
               setEditOpen(true);
@@ -190,18 +227,26 @@ export default function MemoryDetailPage() {
           >
             <Pencil className="size-3.5" /> Edit
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={activeAction !== null || dataMode !== "live"}
+            onClick={() => setDeleteOpen(true)}
+          >
             <Trash2 className="size-3.5" /> Delete
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              setMemoryStatus(memory.id, "flagged_wrong");
-              toast.success("Reported as wrong", { description: "Luna will stop using it while reviewed." });
-            }}
+            onClick={handleReport}
+            disabled={activeAction !== null || dataMode !== "live"}
           >
-            <Flag className="size-3.5" /> Report
+            {activeAction === "report" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Flag className="size-3.5" />
+            )}
+            {activeAction === "report" ? "Reporting..." : "Report"}
           </Button>
         </div>
 
@@ -215,22 +260,32 @@ export default function MemoryDetailPage() {
       </div>
 
       {/* Edit dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog open={editOpen} onOpenChange={(open) => activeAction !== "edit" && setEditOpen(open)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit memory</DialogTitle>
             <DialogDescription>Luna will use your edited version going forward.</DialogDescription>
           </DialogHeader>
-          <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} />
+          <label htmlFor="memory-content" className="sr-only">Memory content</label>
+          <Textarea
+            id="memory-content"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={3}
+            disabled={activeAction === "edit"}
+          />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={!editText.trim()}>Save</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={activeAction === "edit"}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={!editText.trim() || activeAction === "edit"}>
+              {activeAction === "edit" ? <Loader2 className="size-4 animate-spin" /> : null}
+              {activeAction === "edit" ? "Saving..." : "Save"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete dialog */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={deleteOpen} onOpenChange={(open) => activeAction !== "delete" && setDeleteOpen(open)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this memory?</DialogTitle>
@@ -242,9 +297,14 @@ export default function MemoryDetailPage() {
             <p className="text-sm text-foreground">{memory.content}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Keep</Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              <Trash2 className="size-3.5" /> Delete
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={activeAction === "delete"}>Keep</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={activeAction === "delete"}>
+              {activeAction === "delete" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              {activeAction === "delete" ? "Deleting..." : "Delete forever"}
             </Button>
           </DialogFooter>
         </DialogContent>

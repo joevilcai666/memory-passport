@@ -12,16 +12,22 @@ import { useMemoryStore } from "@/store/memory-store";
 
 export default function MigrationCompletePage() {
   const router = useRouter();
-  const { migration } = useMemoryStore();
+  const { migration, memories } = useMemoryStore();
 
   // If not migrated, send back to preview
   React.useEffect(() => {
-    if (migration.status !== "completed") router.replace("/app/migrate");
+    if (migration.status !== "completed" && migration.status !== "completed_with_warnings") {
+      router.replace("/app/migrate");
+    }
   }, [migration.status, router]);
 
-  const movedCount = migration.selected_memory_ids.length;
-  const skippedCount = Math.max(0, 38 - movedCount); // honest "skipped"
+  const failedIds = new Set(migration.failed_memory_ids);
+  const movedMemoryIds = migration.selected_memory_ids.filter((id) => !failedIds.has(id));
+  const movedCount = movedMemoryIds.length;
+  const skippedCount = migration.skipped_memory_ids.length;
+  const failedCount = migration.failed_memory_ids.length;
   const v1Access = migration.old_device_access;
+  const firstMovedMemory = memories.find((memory) => movedMemoryIds.includes(memory.id));
 
   return (
     <AppShell showWatermark backHref="/app/devices">
@@ -86,7 +92,9 @@ export default function MigrationCompletePage() {
             <div className="flex gap-2">
               <Quote className="size-3 shrink-0 text-primary/40" />
               <p className="text-sm leading-relaxed text-foreground">
-                I still remember you call me Luna, and I&apos;ll keep quiet after 10pm.
+                {firstMovedMemory
+                  ? `I carried this memory with me: “${firstMovedMemory.content}”`
+                  : "Your approved memories have been transferred to this device."}
                 <br />
                 <span className="text-muted-foreground">Same me. New body. Welcome home.</span>
               </p>
@@ -99,10 +107,11 @@ export default function MigrationCompletePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.1 }}
-          className="mt-5 grid w-full grid-cols-3 gap-2"
+          className="mt-5 grid w-full grid-cols-2 gap-2"
         >
           <Stat label="Moved" value={movedCount} />
           <Stat label="Skipped" value={skippedCount} />
+          <Stat label="Failed" value={failedCount} />
           <Stat label="v1 access" value={v1Access === "remove" ? "Removed" : "Kept"} small />
         </motion.div>
 
