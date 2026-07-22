@@ -217,8 +217,17 @@ retrieve path returns an empty, auditable trace without calling HMS.
 make check       # complete local release gate
 make down        # preserve database and exports
 make demo        # idempotently upsert seed data and run the customer journey
+make backup      # dump both databases under backups/<timestamp>
+make restore STAMP=<timestamp>  # destructive, fail-fast restore
+make restore-verify             # destructive backup/restore parity test
 make clean       # destructive: delete database volumes and local stack state
 ```
+
+Restore creates pgvector with the Postgres administrator before replaying
+application objects as the `mp` and `hms` owners. It exits nonzero if
+`pg_restore`, extension checks, expected relations, or owner access fail. The
+verification target additionally compares default-stack row counts before and
+after restore and waits for the API to return healthy.
 
 Troubleshooting:
 

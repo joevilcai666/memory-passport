@@ -93,6 +93,10 @@ self-service pieces to move past that:
 - **Backups + restore** — `make backup` dumps both databases;
   `make restore STAMP=<timestamp>` replays them
   ([`scripts/backup.sh`](scripts/backup.sh), [`scripts/restore.sh`](scripts/restore.sh)).
+  Restore pre-creates pgvector with the administrator role, restores all other
+  objects as the database owner, and fails on any archive or verification
+  error. `make restore-verify` performs a destructive backup/restore parity
+  check against the default local stack.
 - **Monitoring** — scrape `GET /v1/health` (returns 503 when HMS or DB is
   down); example Prometheus config in the guide.
 

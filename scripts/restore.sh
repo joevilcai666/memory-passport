@@ -31,6 +31,8 @@ POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres_dev_password_change_me}"
 MP_DB_NAME="${MP_DB_NAME:-memory_passport}"
 HMS_DB_NAME="${HMS_DB_NAME:-hms}"
+MP_DB_PASSWORD="${MP_DB_PASSWORD:-mp_dev_password_change_me}"
+HMS_DB_PASSWORD="${HMS_DB_PASSWORD:-hms_dev_password_change_me}"
 
 ARG="$1"
 if [ -d "$ARG" ]; then
@@ -57,6 +59,20 @@ else
   COMPOSE=(docker-compose)
 fi
 
+LOCAL_LISTS=()
+CONTAINER_LISTS=()
+cleanup() {
+  local path
+  for path in "${LOCAL_LISTS[@]}"; do
+    rm -f -- "$path"
+  done
+  for path in "${CONTAINER_LISTS[@]}"; do
+    MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T postgres \
+      rm -f -- "$path" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
+
 if ! "${COMPOSE[@]}" ps postgres | grep -q "Up\|healthy"; then
   echo "✗ postgres container is not running. Start the stack first: make up" >&2
   exit 1
@@ -76,29 +92,111 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
   # The owner is whatever docker/postgres-init.sh set up (mp for memory_passport,
   # hms for hms). Recreate with the matching role so permissions stay correct.
   case "$db" in
-    "$MP_DB_NAME")  owner="mp" ;;
-    "$HMS_DB_NAME") owner="hms" ;;
-    *)              owner="$POSTGRES_USER" ;;
+    "$MP_DB_NAME")
+      owner="mp"
+      owner_password="$MP_DB_PASSWORD"
+      expected_relation="public.memory_records"
+      ;;
+    "$HMS_DB_NAME")
+      owner="hms"
+      owner_password="$HMS_DB_PASSWORD"
+      expected_relation=""
+      ;;
+    *)
+      owner="$POSTGRES_USER"
+      owner_password="$POSTGRES_PASSWORD"
+      expected_relation=""
+      ;;
   esac
+
+  # Build a restore list before touching the database. pgvector must be
+  # created by the Postgres administrator, while the remaining objects should
+  # be restored as the database owner. Exclude only vector's CREATE/COMMENT
+  # archive entries; every application object remains in the list.
+  local_list="$(mktemp "${TMPDIR:-/tmp}/mp-restore-${db}.XXXXXX.list")"
+  container_list="/tmp/mp-restore-${db}-$$.list"
+  LOCAL_LISTS+=("$local_list")
+  CONTAINER_LISTS+=("$container_list")
+  "${COMPOSE[@]}" exec -T postgres pg_restore -l < "$SRC/$db.dump" \
+    | grep -Ev ' EXTENSION - vector[[:space:]]*$| COMMENT - EXTENSION vector[[:space:]]*$' \
+    > "$local_list"
+  if grep -Eq ' EXTENSION - vector[[:space:]]*$| COMMENT - EXTENSION vector[[:space:]]*$' "$local_list"; then
+    echo "  ✗ failed to filter pgvector archive entries for $db" >&2
+    exit 1
+  fi
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T postgres tee "$container_list" \
+    < "$local_list" >/dev/null
+
   # Drop + recreate so pg_restore starts from a clean slate (avoids the
   # "already exists" errors from restoring into a pre-populated DB). We first
   # force-disconnect any live sessions (e.g. a still-running mp-backend) so the
   # DROP doesn't block on "database is being accessed by other users". Stop the
   # app containers for a cleaner window, but this keeps the script usable when
   # the operator forgot to.
-  "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
     psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
     -c "ALTER DATABASE \"$db\" WITH ALLOW_CONNECTIONS false;" \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid();" \
     -c "DROP DATABASE IF EXISTS \"$db\";" \
     -c "CREATE DATABASE \"$db\" OWNER $owner;"
+
+  # Extensions require administrator privileges. Pre-create vector before
+  # switching to the application owner for all archive objects.
   "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
-    pg_restore -U "$POSTGRES_USER" -d "$db" -v --no-owner --role="$owner" \
-    < "$SRC/$db.dump" || {
-      # pg_restore exits non-zero on benign warnings (e.g. "extension vector
-      # already exists"). Verify the row counts after restore to be sure.
-      echo "  ! pg_restore reported warnings — verify the data manually."
-    }
+    psql -U "$POSTGRES_USER" -d "$db" -v ON_ERROR_STOP=1 \
+    -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+    pg_restore -U "$POSTGRES_USER" -d "$db" -v --exit-on-error \
+    --no-owner --role="$owner" --use-list="$container_list" \
+    < "$SRC/$db.dump"
+
+  vector_ok="$(
+    "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+      psql -U "$POSTGRES_USER" -d "$db" -Atqc \
+      "SELECT count(*) FROM pg_extension WHERE extname = 'vector';" \
+      | tr -d '\r'
+  )"
+  if [ "$vector_ok" != "1" ]; then
+    echo "  ✗ pgvector verification failed for $db" >&2
+    exit 1
+  fi
+
+  table_count="$(
+    "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+      psql -U "$POSTGRES_USER" -d "$db" -Atqc \
+      "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema');" \
+      | tr -d '\r'
+  )"
+  if ! [[ "$table_count" =~ ^[1-9][0-9]*$ ]]; then
+    echo "  ✗ no application tables restored for $db" >&2
+    exit 1
+  fi
+
+  if [ -n "$expected_relation" ]; then
+    relation_ok="$(
+      "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+        psql -U "$POSTGRES_USER" -d "$db" -Atqc \
+        "SELECT CASE WHEN to_regclass('$expected_relation') IS NULL THEN 0 ELSE 1 END;" \
+        | tr -d '\r'
+    )"
+    if [ "$relation_ok" != "1" ]; then
+      echo "  ✗ expected relation $expected_relation is missing in $db" >&2
+      exit 1
+    fi
+  fi
+
+  owner_access="$(
+    "${COMPOSE[@]}" exec -T -e PGPASSWORD="$owner_password" postgres \
+      psql -U "$owner" -d "$db" -Atqc \
+      "SELECT CASE WHEN count(*) > 0 AND bool_and(has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')) THEN 1 ELSE 0 END FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema');" \
+      | tr -d '\r'
+  )"
+  if [ "$owner_access" != "1" ]; then
+    echo "  ✗ owner role $owner cannot read every restored table in $db" >&2
+    exit 1
+  fi
+
   echo "    ✓ $db restored"
 done
 
