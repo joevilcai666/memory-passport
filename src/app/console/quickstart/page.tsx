@@ -12,6 +12,7 @@ import {
   KeyRound,
   Send,
   Download,
+  UserRound,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,15 +22,23 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 function CodeBlock({ children, lang = "bash" }: { children: React.ReactNode; lang?: string }) {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(children).replace(/\n/g, "").replace(/<[^>]+>/g, ""));
+      toast.success("Copied");
+    } catch (error) {
+      toast.error("Could not copy", {
+        description: error instanceof Error ? error.message : "Clipboard unavailable",
+      });
+    }
+  };
+
   return (
     <div className="group relative overflow-hidden rounded-lg border bg-neutral-950 text-neutral-100">
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">{lang}</span>
         <button
-          onClick={() => {
-            navigator.clipboard?.writeText(String(children).replace(/\n/g, "").replace(/<[^>]+>/g, ""));
-            toast.success("Copied");
-          }}
+          onClick={copy}
           className="text-[10px] text-neutral-400 transition-colors hover:text-neutral-100"
         >
           Copy
@@ -43,7 +52,7 @@ function CodeBlock({ children, lang = "bash" }: { children: React.ReactNode; lan
 }
 
 export default function QuickstartPage() {
-  const { app, quickstart, runTestEvent, runRetrieveTest } = useMemoryStore();
+  const { app, quickstart, dataMode, runTestEvent, runRetrieveTest } = useMemoryStore();
   const [sendingEvent, setSendingEvent] = React.useState(false);
   const [retrieving, setRetrieving] = React.useState(false);
 
@@ -53,27 +62,43 @@ export default function QuickstartPage() {
   const sandboxKey =
     process.env.NEXT_PUBLIC_MP_API_KEY ?? seedSandboxKey ?? "mp_sandbox_xxx";
 
-  const handleSendEvent = () => {
+  const handleSendEvent = async () => {
     setSendingEvent(true);
-    setTimeout(() => {
-      runTestEvent();
+    try {
+      const result = await runTestEvent();
+      if (result) {
+        toast.success("Event received", { description: result.event_id });
+      }
+    } catch (error) {
+      toast.error("Test event failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
       setSendingEvent(false);
-      toast.success("Event received · memory created", { description: "mem_quickstart" });
-    }, 1100);
+    }
   };
 
-  const handleRetrieve = () => {
+  const handleRetrieve = async () => {
     setRetrieving(true);
-    setTimeout(() => {
-      runRetrieveTest();
+    try {
+      const result = await runRetrieveTest();
+      if (result) {
+        toast.success("Retrieve succeeded", {
+          description: `${result.results.length} memories · ${result.trace_id}`,
+        });
+      }
+    } catch (error) {
+      toast.error("Retrieve test failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
       setRetrieving(false);
-      toast.success("Retrieve succeeded", { description: "3 memories returned across gpt-4o" });
-    }, 1100);
+    }
   };
 
   const steps = [
-    { icon: Package, label: "Install the SDK", done: true },
-    { icon: KeyRound, label: "Initialize with API key", done: true },
+    { icon: KeyRound, label: "API key available", done: dataMode === "live" && quickstart.apiKeyCreated && app.api_keys.length > 0 },
+    { icon: UserRound, label: "Test user", done: dataMode === "live" && quickstart.testUserCreated },
     { icon: Send, label: "Send first event", done: quickstart.firstEventSent },
     { icon: Download, label: "Retrieve memory", done: quickstart.firstRetrieveDone },
   ];
@@ -130,8 +155,8 @@ export default function QuickstartPage() {
               <Check className="size-4 text-emerald-500" />
               <span>Integration complete. View the memory in the</span>
               <Button variant="link" size="sm" asChild className="h-auto p-0">
-                <Link href="/console/memory/debugger">
-                  Debugger <ArrowRight className="size-3" />
+                <Link href="/console/memory/users">
+                  Memory explorer <ArrowRight className="size-3" />
                 </Link>
               </Button>
             </div>
@@ -142,13 +167,13 @@ export default function QuickstartPage() {
       {/* Steps */}
       <div className="space-y-4">
         {/* Step 1 */}
-        <StepCard step={1} title="Install the SDK" icon={Package} done>
+        <StepCard step={1} title="Install the SDK" icon={Package}>
           <p className="text-sm text-muted-foreground">JavaScript / TypeScript SDK. Also available: Python, REST, React components.</p>
           <CodeBlock>npm install @memory-passport/client</CodeBlock>
         </StepCard>
 
         {/* Step 2 */}
-        <StepCard step={2} title="Initialize" icon={KeyRound} done>
+        <StepCard step={2} title="Initialize" icon={KeyRound} done={dataMode === "live" && quickstart.apiKeyCreated && app.api_keys.length > 0}>
           <p className="text-sm text-muted-foreground">Use your sandbox key. It&apos;s safe to ship to the client.</p>
           <CodeBlock lang="typescript">{`import { MemoryPassport } from "@memory-passport/client";
 
@@ -172,9 +197,9 @@ const mp = new MemoryPassport({
   },
 });`}</CodeBlock>
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleSendEvent} disabled={sendingEvent || quickstart.firstEventSent}>
+            <Button onClick={handleSendEvent} disabled={sendingEvent || quickstart.firstEventSent || dataMode !== "live"}>
               {sendingEvent ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-              {quickstart.firstEventSent ? "Event sent" : "Run test event"}
+              {sendingEvent ? "Sending event..." : quickstart.firstEventSent ? "Event sent" : "Run test event"}
             </Button>
             {quickstart.firstEventSent && (
               <Badge variant="success" className="gap-1">
@@ -206,10 +231,10 @@ console.log(projection);
             <Button
               variant="outline"
               onClick={handleRetrieve}
-              disabled={retrieving || quickstart.firstRetrieveDone || !quickstart.firstEventSent}
+              disabled={retrieving || quickstart.firstRetrieveDone || !quickstart.firstEventSent || dataMode !== "live"}
             >
               {retrieving ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-              {quickstart.firstRetrieveDone ? "Retrieve done" : "Run retrieve test"}
+              {retrieving ? "Retrieving..." : quickstart.firstRetrieveDone ? "Retrieve done" : "Run retrieve test"}
             </Button>
             {!quickstart.firstEventSent && (
               <span className="text-xs text-muted-foreground">Send an event first.</span>
@@ -233,7 +258,7 @@ console.log(projection);
               <Link href="/console/memory/policy">Policy</Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <Link href="/console/memory/debugger">Debugger</Link>
+              <Link href="/console/memory/users">Memory explorer</Link>
             </Button>
             <Button size="sm" asChild>
               <Link href="/app/migrate">

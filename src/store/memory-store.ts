@@ -47,6 +47,7 @@ import type {
   OldDeviceAccess,
   Portability,
   TeamInviteCreateResult,
+  TeamInvite,
   User,
 } from "@/lib/types";
 
@@ -85,11 +86,14 @@ interface MemoryStore {
   policy: MemoryPolicy;
   migration: Migration;
   team: typeof teamMembers;
+  pendingInvites: TeamInvite[];
   auditLogs: AuditLog[];
   alerts: typeof dashboardAlerts;
   kpis: typeof kpis;
   activity: typeof activitySeries;
   quickstart: QuickstartState;
+  lastTraceId: string | null;
+  lastTrace: DebugTrace | null;
 
   hydrated: boolean;
   backendReachable: boolean;
@@ -170,6 +174,17 @@ function appDetailToApp(detail: AppDetail): App {
   };
 }
 
+function maskApiKey(secret: string): string {
+  if (secret.includes("••••")) return secret;
+  const [prefix, environment] = secret.split("_", 3);
+  if (!prefix || !environment || secret.length < 4) return "••••";
+  return `${prefix}_${environment}_••••${secret.slice(-4)}`;
+}
+
+function maskedApiKey(key: ApiKey): ApiKey {
+  return { ...key, key: maskApiKey(key.key) };
+}
+
 function replaceMemory(list: MemoryRecord[], replacement: MemoryRecord): MemoryRecord[] {
   return list.map((memory) =>
     memory.id === replacement.id ? replacement : memory,
@@ -199,11 +214,14 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   policy: seedPolicy,
   migration: seedMigration,
   team: teamMembers,
+  pendingInvites: [],
   auditLogs: seedAuditLogs,
   alerts: dashboardAlerts,
   kpis,
   activity: activitySeries,
   quickstart: initialQuickstart,
+  lastTraceId: null,
+  lastTrace: null,
 
   hydrated: false,
   backendReachable: false,
@@ -281,6 +299,7 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       }
       if (teamResult.status === "fulfilled") {
         next.team = teamResult.value.members;
+        next.pendingInvites = teamResult.value.pending_invites;
       }
       return next;
     });
@@ -456,8 +475,16 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       query: "What should Luna remember about me?",
       model: "quickstart-test",
     });
+    let trace: DebugTrace | null = null;
+    try {
+      trace = await api.getTrace(outcome.trace_id);
+    } catch {
+      // Retrieval succeeded even when the optional debug-trace read is unavailable.
+    }
     set((current) => ({
       quickstart: { ...current.quickstart, firstRetrieveDone: true },
+      lastTraceId: outcome.trace_id,
+      lastTrace: trace,
     }));
     return outcome;
   },
@@ -554,7 +581,11 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   createApp: async (input) => {
     requireLive(get());
     const result = await api.createApp(input);
-    set({ app: { ...result.app, api_keys: [result.api_key] } });
+    set((state) => ({
+      app: { ...result.app, api_keys: [maskedApiKey(result.api_key)] },
+      environment: input.environment,
+      quickstart: { ...state.quickstart, apiKeyCreated: true },
+    }));
     return result;
   },
 
@@ -564,7 +595,7 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
     set((state) => ({
       app:
         state.app.id === appId
-          ? { ...state.app, api_keys: [...state.app.api_keys, created] }
+          ? { ...state.app, api_keys: [...state.app.api_keys, maskedApiKey(created)] }
           : state.app,
     }));
     return created;
@@ -580,7 +611,7 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
               ...state.app,
               api_keys: [
                 ...state.app.api_keys.filter((key) => key.id !== keyId),
-                replacement,
+                maskedApiKey(replacement),
               ],
             }
           : state.app,
@@ -591,14 +622,29 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   inviteTeamMember: async (input) => {
     requireLive(get());
     const result = await api.inviteTeamMember(input);
-    const team = await api.getTeam();
-    set({ team: team.members });
+    set((state) => ({
+      pendingInvites: state.pendingInvites.some(
+        (invite) => invite.id === result.invite.id,
+      )
+        ? state.pendingInvites
+        : [...state.pendingInvites, result.invite],
+    }));
+    try {
+      const team = await api.getTeam();
+      set({ team: team.members, pendingInvites: team.pending_invites });
+    } catch {
+      // The invite already exists and its one-time token must still be returned.
+    }
     return result;
   },
 
   recordTraceFeedback: async (traceId, input) => {
     requireLive(get());
-    return api.recordTraceFeedback(traceId, input);
+    const trace = await api.recordTraceFeedback(traceId, input);
+    set((state) => ({
+      lastTrace: state.lastTraceId === traceId ? trace : state.lastTrace,
+    }));
+    return trace;
   },
 
   registerDevice: async (input) => {

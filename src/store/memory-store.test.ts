@@ -15,6 +15,7 @@ const apiMock = vi.hoisted(() => ({
   deleteMemory: vi.fn(),
   ingestEvent: vi.fn(),
   retrieveMemories: vi.fn(),
+  getTrace: vi.fn(),
   createUser: vi.fn(),
   previewMigration: vi.fn(),
   executeMigration: vi.fn(),
@@ -113,7 +114,19 @@ describe("hydration modes", () => {
     apiMock.getApps.mockResolvedValue([liveApp]);
     apiMock.getPolicy.mockResolvedValue(livePolicy);
     apiMock.getMigration.mockResolvedValue(liveMigration);
-    apiMock.getTeam.mockResolvedValue({ members: [liveMember], pending_invites: [] });
+    const pendingInvite = {
+      id: "tmi_pending",
+      email: "pending@example.com",
+      role: "Support",
+      created_by: "owner@example.com",
+      created_at: "2026-07-22T00:00:00Z",
+      expires_at: "2026-07-29T00:00:00Z",
+      accepted_at: null,
+    };
+    apiMock.getTeam.mockResolvedValue({
+      members: [liveMember],
+      pending_invites: [pendingInvite],
+    });
 
     await useMemoryStore.getState().hydrate();
 
@@ -125,6 +138,7 @@ describe("hydration modes", () => {
     expect(state.policy).toEqual(livePolicy);
     expect(state.migration).toEqual(liveMigration);
     expect(state.team).toEqual([liveMember]);
+    expect(state.pendingInvites).toEqual([pendingInvite]);
   });
 
   it("does not enter live mode when the core memory read fails", async () => {
@@ -271,8 +285,22 @@ describe("Quickstart", () => {
     await expect(state.runRetrieveTest()).rejects.toThrow();
     expect(useMemoryStore.getState().quickstart.firstRetrieveDone).toBe(false);
     apiMock.retrieveMemories.mockResolvedValue({ trace_id: "trc_server", results: [] });
+    const trace = {
+      id: "trc_server",
+      query: "What should Luna remember about me?",
+      caller: { model: "quickstart-test" },
+      hms_results: { results: [] },
+      projected: { results: [] },
+      retrieval_events: { events: {} },
+      feedback: null,
+      created_at: "2026-07-22T00:00:00Z",
+    };
+    apiMock.getTrace.mockResolvedValue(trace);
     await state.runRetrieveTest();
     expect(useMemoryStore.getState().quickstart.firstRetrieveDone).toBe(true);
+    expect(useMemoryStore.getState().lastTraceId).toBe("trc_server");
+    expect(useMemoryStore.getState().lastTrace).toEqual(trace);
+    expect(apiMock.getTrace).toHaveBeenCalledWith("trc_server");
   });
 });
 
@@ -318,11 +346,15 @@ describe("console operation results", () => {
       data_region: "us-east-1",
       show_powered_by: true,
     })).toEqual(createdApp);
+    expect(useMemoryStore.getState().app.api_keys[0].key).not.toBe("mp_secret");
+    expect(useMemoryStore.getState().app.api_keys[0].key).toContain("••••");
     expect(await state.createApiKey("app_created", {
       label: "Second",
       environment: "sandbox",
     })).toEqual(createdKey);
+    expect(useMemoryStore.getState().app.api_keys.at(-1)?.key).not.toBe(createdKey.key);
     expect(await state.rotateApiKey("app_created", "key_second")).toEqual(rotatedKey);
+    expect(useMemoryStore.getState().app.api_keys.at(-1)?.key).not.toBe(rotatedKey.key);
     expect(await state.inviteTeamMember({ email: "new@example.com", role: "Support" })).toEqual(invited);
     expect(await state.recordTraceFeedback("trc_1", {
       memory_id: "mem_1",
@@ -341,5 +373,29 @@ describe("console operation results", () => {
     expect(await state.unbindDevice("dev_new")).toEqual(unbound);
     expect(await state.wipeDevice("dev_new")).toEqual(wiped);
     expect(await state.exportMemories()).toEqual({ export_id: "exp_1", blob });
+  });
+
+  it("preserves a successfully issued invite when the follow-up team refresh fails", async () => {
+    activateLive();
+    const state = useMemoryStore.getState();
+    const invited = {
+      invite: {
+        id: "tmi_refresh_failure",
+        email: "issued@example.com",
+        role: "Support",
+        created_by: "owner@example.com",
+        created_at: "2026-07-22T00:00:00Z",
+        expires_at: "2026-07-29T00:00:00Z",
+        accepted_at: null,
+      },
+      token: "issued-token",
+    };
+    apiMock.inviteTeamMember.mockResolvedValue(invited);
+    apiMock.getTeam.mockRejectedValue(new Error("refresh failed"));
+
+    await expect(
+      state.inviteTeamMember({ email: "issued@example.com", role: "Support" }),
+    ).resolves.toEqual(invited);
+    expect(useMemoryStore.getState().pendingInvites).toContainEqual(invited.invite);
   });
 });
