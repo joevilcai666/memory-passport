@@ -33,8 +33,8 @@ Remediation baseline: `artifacts/remediation-2026-07-22/baseline.txt`
 |---|---|---|---|---|---|---|
 | 1 | Browser CORS preflight blocked | Allowed local origin receives valid preflight; unlisted origin does not | `backend/tests/test_cors.py` | verified | `a47b7f7` | host/container tests pass; live preflight `200`, authenticated browser-origin GET `200` |
 | 2 | False-positive frontend success | Failed/skipped requests never mutate state or show success; successful state survives reload | API-client, store, component, browser tests | open | — | API and Postgres assertions pending |
-| 3 | Windows CRLF breaks shell entrypoints | Autocrlf-enabled fresh clone retains LF and passes `bash -n` | `scripts/verify-line-endings.ps1` + Windows CI | open | — | fresh-clone proof pending |
-| 4 | Restore can omit pgvector and swallow failure | Restore exits zero only with vector, owner access, and exact row parity | `scripts/verify-restore.sh` | open | — | destructive round trip pending |
+| 3 | Windows CRLF breaks shell entrypoints | Autocrlf-enabled fresh clone retains LF and passes `bash -n` | `scripts/verify-line-endings.ps1` + Windows CI | verified | `7685dfd`, `647843a` | fresh autocrlf clone: 8 LF inputs; all 6 shell scripts parse after verifier was added |
+| 4 | Restore can omit pgvector and swallow failure | Restore exits zero only with vector, owner access, and exact row parity | `scripts/verify-restore.sh` | verified | `11bb06a` | destructive round trip preserved MP/HMS counts and vector; owner access and health passed |
 | 5 | Consent action toggles the wrong direction | Explicit true/false is idempotent and enforced by ingest/retrieve | `backend/tests/test_consent.py` + component test | open | — | API/DB proof pending |
 | 6 | Migration selection/count defects | Selection does not collapse bucket; counts derive from preview/execute responses | migration component/store tests | open | — | browser persistence proof pending |
 | 7 | Removed Debugger route is linked | No tracked link targets the removed route; Users Trace Sheet opens | Quickstart component/source tests | open | — | browser navigation proof pending |
