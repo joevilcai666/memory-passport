@@ -660,7 +660,16 @@ def main() -> None:
             409,
             json={"status": "candidate"},
         )
-        deleted = call(client, "tombstone edited memory", "DELETE", f"/v1/memories/{edited_id}", 200).json()
+        archived = call(
+            client,
+            "archive edited memory before deletion",
+            "PATCH",
+            f"/v1/memories/{edited_id}",
+            200,
+            json={"status": "archived"},
+        ).json()
+        check("edited memory archived", archived["status"] == "archived", archived)
+        deleted = call(client, "tombstone archived memory", "DELETE", f"/v1/memories/{edited_id}", 200).json()
         check("delete is tombstone", deleted["status"] == "deleted", deleted)
         deleted_list = call(
             client,

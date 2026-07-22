@@ -152,6 +152,39 @@ describe("hydration modes", () => {
 });
 
 describe("authoritative mutations", () => {
+  it("replaces the edited source record when the backend creates a new version id", async () => {
+    activateLive();
+    const source = useMemoryStore.getState().memories[0];
+    const replacement = {
+      ...source,
+      id: "mem_new_version",
+      content: "Updated server version",
+      version: source.version + 1,
+      supersedes: source.id,
+    };
+    apiMock.patchMemory.mockResolvedValue(replacement);
+
+    await useMemoryStore.getState().editMemory(source.id, replacement.content);
+
+    expect(useMemoryStore.getState().memories).not.toContainEqual(source);
+    expect(useMemoryStore.getState().memories).toContainEqual(replacement);
+  });
+
+  it("removes a successfully tombstoned memory from the live list", async () => {
+    activateLive();
+    const source = useMemoryStore.getState().memories[0];
+    apiMock.deleteMemory.mockResolvedValue({
+      ...source,
+      status: "deleted",
+    });
+
+    await useMemoryStore.getState().deleteMemory(source.id);
+
+    expect(useMemoryStore.getState().memories).not.toContainEqual(
+      expect.objectContaining({ id: source.id }),
+    );
+  });
+
   it("rejects offline writes without changing local state", async () => {
     useMemoryStore.setState({ hydrated: true, dataMode: "offline-demo" });
     const before = useMemoryStore.getState().memories;

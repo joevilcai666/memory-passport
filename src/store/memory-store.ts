@@ -185,9 +185,13 @@ function maskedApiKey(key: ApiKey): ApiKey {
   return { ...key, key: maskApiKey(key.key) };
 }
 
-function replaceMemory(list: MemoryRecord[], replacement: MemoryRecord): MemoryRecord[] {
+function replaceMemory(
+  list: MemoryRecord[],
+  replacement: MemoryRecord,
+  replacedId = replacement.id,
+): MemoryRecord[] {
   return list.map((memory) =>
-    memory.id === replacement.id ? replacement : memory,
+    memory.id === replacedId ? replacement : memory,
   );
 }
 
@@ -384,7 +388,7 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   editMemory: async (id, content) => {
     requireLive(get());
     const updated = await api.patchMemory(id, { content });
-    set((state) => ({ memories: replaceMemory(state.memories, updated) }));
+    set((state) => ({ memories: replaceMemory(state.memories, updated, id) }));
     return updated;
   },
 
@@ -398,7 +402,7 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   deleteMemory: async (id) => {
     requireLive(get());
     const updated = await api.deleteMemory(id);
-    set((state) => ({ memories: replaceMemory(state.memories, updated) }));
+    set((state) => ({ memories: state.memories.filter((memory) => memory.id !== id) }));
     return updated;
   },
 

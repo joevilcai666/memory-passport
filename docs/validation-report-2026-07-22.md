@@ -1,285 +1,170 @@
-# Memory Passport complete runtime and product validation
+# Memory Passport complete local validation report
 
 Date: 2026-07-22 (Asia/Shanghai)
 
 Repository: `https://github.com/joevilcai666/memory-passport.git`
 
-Validated commit: `774be0d9d5fc720bd2d667c5e6db4fb3a4e13420` (`main`)
-HMS submodule: `vendor/hms` at `aa2035b4074ecb394d76243e59ae537e014a7ac7`
+Local validation branch: `fix/validation-remediation-2026-07-22`
 
 ## Executive verdict
 
-The repository can be installed, built, and run locally. The default Docker backend is healthy, its complete container test suite passes, and an independent 95-case live HTTP matrix passes. The production frontend also builds and all product routes render and hydrate.
+The complete default local product now runs end to end.
 
-The product is **not currently complete end-to-end in a normal browser**. The frontend cannot reach the running backend because the FastAPI service does not allow the required CORS preflight. It falls back to seed data, after which many workflows show optimistic or simulated success without persistence. This affects Quickstart, memory edits/deletes, delete-all, policies, device binding, migration, audit, exports, and several console operations.
+- Backend: **yes**. FastAPI, PostgreSQL/pgvector, and the deterministic HMS-compatible evaluator are healthy. The container suite passes 196/196 and the real HTTP matrix passes 120/120.
+- Frontend: **yes**. The Next.js production build passes, all 18 fixed routes render without runtime/hydration errors, and B-side/C-side browser actions persist through the backend.
+- Frontend to backend integration: **yes for local evaluation**. Allowed local CORS origins work; an unlisted origin is rejected.
+- Backup/restore: **yes**. Exact row parity, pgvector, vector data, owner access, and post-restore health were verified.
+- Windows checkout/run path: **yes**. A fresh `core.autocrlf=true` clone retained LF for Linux entrypoints and all shell scripts parsed.
 
-Practical answer:
+This is not yet a production-hosted authentication deployment. The browser-visible sandbox key is explicitly evaluator-only; a deployed console still needs a server-side user session/BFF and tenant API keys must remain on that server. Real HMS provider inference and public TLS were not exercised because no provider credentials, domain, or DNS target were supplied.
 
-- Backend/demo API: **YES — runnable and thoroughly passing.**
-- Frontend rendering and local interactions: **YES — production build works.**
-- Frontend ↔ backend product loop: **NO — blocked by CORS and prototype/local-only handlers.**
-- Real HMS with live LLM/embedding providers: **CONFIGURATION VALIDATED, LIVE INFERENCE NOT TESTED** because real provider credentials were not supplied.
-- Public TLS deployment: **CONFIGURATION VALIDATED, LIVE CERTIFICATE/DNS NOT TESTED** because no public domain/DNS was supplied.
+## Final release-gate results
 
-## Remediation status
+| Layer | Result | Evidence |
+|---|---:|---|
+| Frontend unit/component/store | PASS | 18 files, 94/94 tests |
+| Frontend lint | PASS | ESLint, zero errors |
+| Frontend production build | PASS | Next.js 16.2.10, TypeScript pass, 19 generated routes including `_not-found` |
+| Backend lint | PASS | Ruff on `backend/app`, `backend/tests`, and the live matrix |
+| Python environment | PASS | `pip check`: no broken requirements |
+| Host backend tests | PASS | 185 passed; 11 service-dependent tests skipped as designed |
+| Container backend tests | PASS | 196/196, no skips/failures |
+| Live API matrix | PASS | 120/120, run `matrix-f56a5bc0ab` |
+| CORS | PASS | `http://localhost:3000` preflight 200; unlisted origin 400 |
+| Direct database assertions | PASS | app persistence, deleted passport, migration rollback, consumed invite, trace feedback |
+| Browser route sweep | PASS | 18/18 fixed routes; no runtime, hydration, or server error text |
+| Dynamic invite route | PASS | real token previewed, accepted once, and persisted |
+| Offline frontend | PASS | read-only demo fallback; all tested writes disabled |
+| Official demo | PASS | health, ingest, retrieve, edit, export, delete, audit, usage |
+| Backup/restore | PASS | MP/HMS row parity and pgvector/vector checks |
+| Product-claim source check | PASS | documented routes, branches, runtime claims, and security boundary |
+| Windows line endings | PASS | 8 Linux entrypoints LF; 6 shell scripts pass `bash -n` in fresh autocrlf clone |
 
-Implementation design: `docs/specs/2026-07-22-validation-remediation-design.md`
+Machine-readable HTTP evidence is in `artifacts/remediation-2026-07-22/api-results.json`. Browser and restore evidence are in the same directory.
 
-TDD plan: `docs/plans/2026-07-22-validation-remediation-implementation.md`
+## Remediation ledger
 
-Remediation baseline: `artifacts/remediation-2026-07-22/baseline.txt`
+| # | Original problem | Resolution | Final status |
+|---:|---|---|---|
+| 1 | Browser CORS preflight blocked | Added configured origin allowlist and preflight tests; allowed origin succeeds and an unlisted origin is blocked. | Verified |
+| 2 | Frontend could claim success without persistence | Store/API/component actions now await real responses, use response bodies as truth, reject offline writes, and preserve state on failure. | Verified |
+| 3 | Windows CRLF broke Linux entrypoints | Added repository line-ending policy and an explicit verifier; fresh Windows clone passed. | Verified |
+| 4 | Restore could omit pgvector or swallow failure | Restore now pre-creates/verifies vector support, preserves ownership, fails on incomplete work, and checks exact row parity. | Verified |
+| 5 | Consent `Turn on` toggled the wrong direction | Consent uses explicit idempotent true/false endpoints and is enforced by backend ingest/retrieve behavior. | Verified |
+| 6 | Migration selection/counts could diverge | Selection no longer collapses its bucket; moved/skipped/failed counts come from preview/execute results. | Verified |
+| 7 | Quickstart linked a removed debugger route | Dead link removed; trace exploration uses the implemented Users/Trace flow. | Verified |
+| 8 | Major controls were no-ops or local simulations | Apps/keys, Quickstart, policy, users, feedback, team, consent, memory, export, device, migration, and delete-all are backed by real APIs. | Verified |
+| 9 | Product documentation drifted from runtime | Branch, HMS mode, device bind, tenant/security, and failure-state claims were aligned and source-checked. | Verified |
+| 10 | Development hydration behavior was uncertain | Controlled development and production route sweeps rendered without hydration/runtime errors; production was re-swept after final fixes. | Verified |
+| 11 | Windows `demo.sh` hit the WindowsApps Python stub | Demo now prefers the repository virtualenv, validates fallback interpreters, and supports `MP_DEMO_PYTHON`. | Verified |
+| 12 | Versioned edit left the old row in the UI | Store replaces the source ID with the server-returned new version ID. | Verified |
+| 13 | Archived/reviewed records could not be deleted | Every non-deleted lifecycle state can tombstone; already-deleted remains illegal. | Verified |
+| 14 | Tombstoned rows remained in the live UI list | Successful delete removes the row locally, matching the backend default list. | Verified |
 
-| # | Issue | Acceptance evidence | Focused test | Status | Commit | Runtime proof |
-|---|---|---|---|---|---|---|
-| 1 | Browser CORS preflight blocked | Allowed local origin receives valid preflight; unlisted origin does not | `backend/tests/test_cors.py` | verified | `a47b7f7` | host/container tests pass; live preflight `200`, authenticated browser-origin GET `200` |
-| 2 | False-positive frontend success | Failed/skipped requests never mutate state or show success; successful state survives reload | API-client, store, component, browser tests | open | — | API and Postgres assertions pending |
-| 3 | Windows CRLF breaks shell entrypoints | Autocrlf-enabled fresh clone retains LF and passes `bash -n` | `scripts/verify-line-endings.ps1` + Windows CI | verified | `7685dfd`, `647843a` | fresh autocrlf clone: 8 LF inputs; all 6 shell scripts parse after verifier was added |
-| 4 | Restore can omit pgvector and swallow failure | Restore exits zero only with vector, owner access, and exact row parity | `scripts/verify-restore.sh` | verified | `11bb06a` | destructive round trip preserved MP/HMS counts and vector; owner access and health passed |
-| 5 | Consent action toggles the wrong direction | Explicit true/false is idempotent and enforced by ingest/retrieve | `backend/tests/test_consent.py` + component test | open | — | API/DB proof pending |
-| 6 | Migration selection/count defects | Selection does not collapse bucket; counts derive from preview/execute responses | migration component/store tests | open | — | browser persistence proof pending |
-| 7 | Removed Debugger route is linked | No tracked link targets the removed route; Users Trace Sheet opens | Quickstart component/source tests | open | — | browser navigation proof pending |
-| 8 | Major actions are no-ops | V0.1 actions call persisted endpoints or are not active controls | console/C-side API, store, component tests | open | — | full visible-control matrix pending |
-| 9 | Documentation/product copy drift | All commands, branches, routes, engine claims, and browser-key limits match runtime | documentation source check | open | — | clean-clone walkthrough pending |
-| 10 | Development hydration warning | Development and production sessions hydrate with zero React/console errors | browser matrix | open | — | controlled-browser proof pending |
+## Functional coverage
 
-Historical evidence below describes commit `774be0d`. The remediation table is
-updated only when current focused tests and runtime evidence prove an item.
+### Backend and data plane
 
-## What the product is
+The 120-case live matrix and 196-test container suite cover:
 
-Memory Passport is a user-owned portable memory layer for AI companions and robots. It exposes:
+- public health, Swagger, and all 37 current OpenAPI operations;
+- missing, malformed, unknown, bare-token, and Bearer authentication;
+- apps, one-time API keys, key rotation/revocation, agents, users, relationships, and idempotent provisioning;
+- explicit memory consent on/off;
+- device register, pair, bind, duplicate conflict, unbind, wipe, and wiped-device denial;
+- policy create/update, cross-brand validation, block, confirm, auto-write, masking, and retrieval limits;
+- memory ingest, candidate activation, scoped retrieval, debug trace, and persistent trace feedback;
+- filters, pagination, versioned edits, complete legal/illegal state transitions, archived deletion, and tombstones;
+- migration preview, selection buckets, execute, old-device access, retry/rollback, and lookup;
+- audit filters, usage aggregates, team invite lifecycle, export/token/download, and delete-user cascade;
+- tenant isolation and HMS rollback/error behavior through automated tests.
 
-- a B-side Next.js operator console under `/console/*`;
-- a C-side embedded user experience under `/app/*`;
-- a FastAPI control/data plane with tenant-scoped bearer authentication;
-- policy-controlled memory ingest/retrieve/edit/delete;
-- device registration, binding, wipe, and generation migration;
-- audit logs, usage aggregates, model-neutral export, and user deletion;
-- an HMS-compatible memory-engine boundary.
+### Browser product journeys
 
-The default evaluator mode is credential-free:
+The production browser pass executed real writes for:
 
-`Next.js UI → FastAPI Memory Passport → deterministic HMS-compatible demo service → PostgreSQL/pgvector`
+- app creation and one-time API-key display;
+- Quickstart event ingest and retrieval;
+- policy save and restore;
+- team invite creation, public preview, acceptance, and one-time consumption;
+- console memory edit, archive, and delete;
+- consent off/on;
+- explicit memory add and JSON export;
+- device registration and binding;
+- migration of 35 portable memories with 5 skipped and 0 failed;
+- report-as-wrong, single delete, and atomic delete-all.
 
-It validates orchestration and lifecycle behavior, but it is not live semantic LLM/embedding inference. The real overlay adds the vendored HMS API and worker and requires LLM, light-LLM, and embedding credentials.
+When the backend was stopped, Memory Center and the console remained readable but mutations were disabled and no success was claimed.
 
-## Environment installed inside this folder
+## Backup and restore
 
-- Node.js runtime discovered from the local Codex workspace runtime.
-- pnpm 10.34.5 through Corepack; cache kept under `node_modules/.cache/corepack`.
-- 453 frontend packages installed with the frozen lockfile.
-- Python 3.11.9 virtual environment at `backend/.venv`.
-- 42 compatible Python packages in the final environment check.
-- Docker Desktop / Engine 29.6.1.
-- `.env` created from `.env.example` and kept ignored.
-- Runtime/cache material kept under ignored project paths (`node_modules`, `backend/.venv`, `.zcode`, `backups`).
+`scripts/verify-restore.sh` completed a destructive round trip and returned exit 0.
 
-No product source code was modified. The only tracked-area additions are this report and the test plan; test artifacts are under `artifacts/validation-2026-07-22`.
-
-## How to run it now
-
-The final Docker state is the clean Luna seed: 1 tenant, 1 app, 4 users, 4 devices, 1 policy, 6 rules, 42 memories, 1 preview migration, and 8 audit rows. All three default services are healthy.
-
-Backend stack:
-
-```powershell
-docker compose up -d --wait --remove-orphans
-docker compose exec -T mp-backend alembic upgrade head
-docker compose exec -T mp-backend python -m app.seed.run_seed
+```text
+before: mp=1,3,6,12,51,3,3,2,85;hms=6,4;vector=1,1
+after:  mp=1,3,6,12,51,3,3,2,85;hms=6,4;vector=1,1
 ```
 
-Frontend development mode:
+It verified database recreation, exact MP/HMS row parity, pgvector presence, queryable vector data, owner access, and healthy services.
 
-```powershell
-$env:COREPACK_HOME = (Resolve-Path 'node_modules\.cache\corepack').Path
-& 'D:\software_data\NodeJS\corepack.cmd' pnpm@10 dev
-```
+## Final local state
 
-Frontend release mode:
+After destructive browser/API tests, the project Docker volume was removed and recreated. The final intended state is the clean Luna evaluator seed:
 
-```powershell
-$env:COREPACK_HOME = (Resolve-Path 'node_modules\.cache\corepack').Path
-& 'D:\software_data\NodeJS\corepack.cmd' pnpm@10 build
-& 'D:\software_data\NodeJS\corepack.cmd' pnpm@10 start
-```
+- 1 tenant, 1 app, 2 API keys;
+- 4 users, 2 agents, 4 devices, 1 relationship;
+- 1 policy, 6 auto-write rules, 42 memories;
+- 1 migration, 3 team members, 8 audit logs;
+- 4/4 HMS banks;
+- PostgreSQL, HMS evaluator, and MP backend healthy.
 
 Local endpoints:
 
-- Frontend: `http://127.0.0.1:3000`
+- Frontend: `http://localhost:3000`
 - Backend health: `http://127.0.0.1:8000/v1/health`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- Demo HMS health/API: `http://127.0.0.1:18080`
+- Swagger: `http://127.0.0.1:8000/docs`
+- HMS evaluator: `http://127.0.0.1:18080`
 
-Important: until CORS is fixed, the frontend will show the offline Luna dataset even while the backend is green.
+## Remaining production boundaries
 
-## Fresh verification results
+These are outside the completed local evaluator acceptance and must not be represented as already validated:
 
-| Layer | Command/scope | Result |
-|---|---|---|
-| Frontend lint | `pnpm lint` | PASS, zero errors. |
-| Frontend release build | `pnpm build` | PASS; Next.js 16.2.10, TypeScript PASS, 19 generated routes including `_not-found`. |
-| Backend lint | `ruff check backend/app backend/tests` | PASS. |
-| Python dependencies | `uv pip check --python backend/.venv/Scripts/python.exe` | PASS; 42 packages compatible. |
-| Host backend tests | Service-independent host run | 152 passed, 10 service-dependent skipped. |
-| Full container tests | `docker compose exec -T mp-backend pytest -q` | PASS; 162/162 (72 + 72 + 18), no skips/failures. |
-| Independent live API matrix | `live_api_matrix.py` | PASS; 95/95, 0 failed, run `matrix-f536361b49`. |
-| Documented local demo | `scripts/demo.sh` | PASS; complete health/ingest/retrieve/edit/export/delete/audit/usage flow. |
-| Default service health | Compose health checks + `/v1/health` | PASS; PostgreSQL, HMS demo, and MP backend all healthy; `memory_engine=demo`. |
-| Seed idempotence | Seed executed twice | PASS; counts stayed exactly at the expected Luna dataset. |
-| Frontend browser sweep | All 18 product route families, desktop and 390×844 mobile | Routes render; local UI interactions PASS; browser/backend integration FAIL. |
+1. **Production browser authentication/BFF is not implemented.** The local seeded API key is exposed only for single-machine evaluation. A deployed UI needs user authentication, server-side authorization, and server-held tenant keys.
+2. **Console role enforcement is not a production RBAC boundary.** Team Owner/Admin/Support records and invite lifecycle persist, but API authorization is tenant-key based rather than signed-in human-role based.
+3. **Real HMS inference was not run.** The overlay/configuration boundary exists and fails closed on missing credentials, but real LLM/light-LLM/embedding calls require supplied provider keys.
+4. **Public HTTPS was not run.** TLS Compose configuration exists, but no real domain, DNS, or certificate issuance target was available.
+5. **Physical camera/QR/hardware was not run.** The current local flow intentionally registers a test device and binds its one-time code; no physical robot or camera was supplied.
+6. **No GitHub push was performed.** All work remains local on `fix/validation-remediation-2026-07-22`, as requested.
 
-The independent live matrix covers:
+## Reproduce locally
 
-- health, Swagger, and all 26 documented OpenAPI operations;
-- missing/bad/bare/Bearer authentication behavior;
-- app, agent, user, relationship, and idempotent provisioning;
-- device register/bind/unbind/wipe and wrong/duplicate/missing cases;
-- policy validation, block/confirm/auto-write paths;
-- candidate and active ingest;
-- scoped retrieval, wiped-device exclusion, and debug trace;
-- memory filters, pagination, versioned edit, state transitions, tombstones;
-- migration preview, idempotence, execute, old-device removal, lookup, rollback;
-- audit logs and usage;
-- export polling, token validation, model-neutral format, one-shot download;
-- delete-user cascade and post-delete empty retrieval.
-
-Cross-tenant isolation is covered by the 162-test suite. The live matrix did not provision a second tenant because there is no public second-tenant creation endpoint.
-
-## Frontend coverage summary
-
-All release routes were exercised:
-
-- landing: `/`;
-- operator: `/console`, `/console/quickstart`, `/console/apps`, `/console/apps/new`, `/console/apps/app_luna`, `/console/memory/policy`, `/console/memory/users`, `/console/devices`, `/console/settings`;
-- user: `/app/consent`, `/app/memory`, `/app/memory/mem_001`, `/app/memory/delete`, `/app/devices`, `/app/devices/bind`, `/app/migrate`, `/app/migrate/complete`;
-- invalid/missing: standard not-found and the product-linked `/console/memory/debugger`.
-
-Detailed interaction evidence is in `artifacts/validation-2026-07-22/frontend-functional-results.md`.
-
-## Confirmed issues
-
-### 1. BLOCKER — frontend cannot call the backend from a browser
-
-Evidence:
-
-- `src/lib/api-client.ts` targets `http://127.0.0.1:8000` and adds `Authorization` to every request.
-- The FastAPI app contains no `CORSMiddleware` configuration.
-- Browser preflight:
-
-```text
-OPTIONS /v1/health
-Origin: http://127.0.0.1:3000
-Access-Control-Request-Headers: authorization
-
-HTTP/1.1 405 Method Not Allowed
-Allow: GET
+```powershell
+docker compose up -d --wait
+docker compose exec -T mp-backend python -m app.seed.run_seed
+.\node_modules\.bin\vitest.CMD run
+.\node_modules\.bin\eslint.CMD .
+.\node_modules\.bin\next.CMD build
+.\backend\.venv\Scripts\python.exe -m ruff check backend/app backend/tests scripts/live-api-matrix.py
+.\backend\.venv\Scripts\python.exe -m pip check
+.\backend\.venv\Scripts\python.exe -m pytest -q backend/tests
+docker compose exec -T mp-backend pytest -q
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-remediation.ps1
 ```
 
-- The UI then shows `Backend offline — showing demo data`.
+Operational checks:
 
-Impact: the README says the console is wired to the real backend, but a normal browser cannot establish that loop.
-
-### 2. BLOCKER — multiple workflows produce false-positive success
-
-Confirmed browser/UI result versus backend truth:
-
-- Quickstart announces a created memory and successful retrieval; backend remains at 42 records and has no `mem_quickstart`.
-- UI edit of `mem_001` shows version 2; backend remains original version 1.
-- UI archive/delete of `mem_030` changes the row; backend remains active.
-- Delete-all shows zero memories; backend remains at 42.
-- Policy UI shows changed axes/limits; database policy remains unchanged.
-- Migration completion shows 33 moved; database migration remains preview with zero selected.
-
-The store intentionally skips backend calls after the CORS-blocked ping, so these are not merely delayed writes.
-
-### 3. HIGH — Windows default checkout breaks Docker initialization
-
-The repository has shell scripts stored as LF but no `.gitattributes`. This machine has global `core.autocrlf=true`, so a normal checkout converted five `.sh` files to CRLF. The documented Compose flow then failed with:
-
-```text
-/usr/bin/env: ‘bash\r’: No such file or directory
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-product-claims.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-line-endings.ps1
+& 'D:\software_data\Git\bin\bash.exe' scripts/demo.sh
+& 'D:\software_data\Git\bin\bash.exe' scripts/verify-restore.sh
 ```
 
-The database init script did not create the `mp` and `hms` roles, and HMS became unhealthy. I set repository-local `core.autocrlf=false` and normalized the shell-script working copies to LF. Git reports no source diff, but a fresh Windows user can hit the same failure until the repository adds line-ending policy.
+## Evidence index
 
-### 4. HIGH — backup passes, restore is only partial for pgvector
-
-Backup succeeded and created:
-
-- `backups/20260722T033250Z/memory_passport.dump` — 71,180 bytes;
-- `backups/20260722T033250Z/hms.dump` — 5,186 bytes.
-
-Restore preserved the tested MP/HMS data counts and health returned green, but `pg_restore` under the non-superuser `mp`/`hms` roles could not create the `vector` extension. It logged permission-denied and missing-extension-comment errors, downgraded the restore failure to a warning, and continued. Health does not verify that pgvector was restored. A restore must not be considered complete from the current script's final message alone.
-
-### 5. HIGH — consent `Turn on` can turn memory off
-
-The seeded user starts with memory enabled. `/app/consent` always calls `toggleMemoryEnabled()` rather than setting true. Clicking `Turn on` produced a success toast but navigated to Memory Center showing `Paused`.
-
-### 6. MEDIUM — migration UI has selection and count defects
-
-- `Select all` is a button nested inside another role=button header; its click bubbles and collapses the recommendation bucket.
-- Completion uses `Math.max(0, 38 - movedCount)` although the preview displays 39 total items. Moving 33 while leaving five device-local and one portable deselected reports 5 skipped instead of 6.
-
-### 7. MEDIUM — Quickstart links to a nonexistent debugger
-
-`/console/memory/debugger` is linked from the Quickstart next-steps and completion callout but is not a generated route. It returns the standard 404.
-
-### 8. MEDIUM — major console/user actions are prototypes or no-ops
-
-- Create app only routes to Quickstart and does not create an app.
-- New key and Roll key have no handlers; the production key is a masked placeholder.
-- Memory export, migration report export, migration retry, trace feedback, and device binding are toast/local simulations.
-- Invite member says a link was copied but writes nothing to the clipboard.
-- Quickstart retrieve only flips local state; it never calls `api.retrieveMemories`.
-- Integration badges and several dashboard/device KPIs are hard-coded or seeded.
-
-### 9. LOW — documentation and product-copy drift
-
-- README/evaluation instructions reference checking out an `HMS` branch, but the remote currently exposes `main` only.
-- The Makefile assumes Unix paths/tools; native Windows has no `make` here, so PowerShell users must run the underlying commands.
-- The landing footer says `Prototype · seeded with the Luna dataset · no real backend`, despite this repository containing and running a real FastAPI backend.
-
-### 10. WARN — unresolved `next dev` hydration behavior in controlled browsers
-
-Both controlled browsers initially received the `next dev` server-rendered page but did not attach client interactions. An isolated browser control page executed inline/external scripts and click handlers, while `next start` hydrated normally. This is not a production-build failure, but the development/Turbopack path should be reproduced outside the controlled browser before relying on it.
-
-## Backup, real-HMS, and TLS boundaries
-
-| Area | Result | Boundary |
-|---|---|---|
-| Backup | PASS | Both databases dumped with nonzero artifacts. |
-| Restore | PARTIAL | Data returned and health was green, but pgvector extension restoration failed under non-superuser roles. |
-| Real-HMS credential validation | PASS fail-closed | Default `.env` is rejected with a precise missing-credential error; a non-placeholder validation environment passes. |
-| Real-HMS Compose render | PASS | `postgres`, `hms-api`, `hms-worker`, `mp-backend`; MP mode renders as `real`. |
-| Real-HMS live inference | NOT RUN | No real LLM/light-LLM/embedding provider credentials were supplied. |
-| TLS Compose render | PASS | Caddy renders with 80/443, and backend host publication is removed behind the proxy. |
-| Public HTTPS | NOT RUN | No controlled public domain, DNS, or certificate issuance target was supplied. |
-| Physical QR/camera/hardware | NOT RUN | The current browser UI is a timer-based simulation; backend device APIs were tested directly. |
-
-## Workspace and source integrity
-
-- Clone origin and commit were verified.
-- HMS submodule was initialized and pinned.
-- Product source files were not changed.
-- `.env`, virtualenv, dependency caches, Docker data, and backup artifacts remain ignored.
-- The repository-local line-ending setting and LF normalization are environment fixes; `git diff` reports no product source changes.
-- Expected untracked deliverables are `docs/plans`, this validation report, and `artifacts/validation-2026-07-22`.
-
-## Recommended release order
-
-1. Add explicit CORS policy for the supported frontend origins and test preflight/authenticated browser requests.
-2. Make Quickstart, edit/delete, delete-all, policy, migration, export, invite, key management, device binding, and feedback report backend truth rather than optimistic demo truth.
-3. Add frontend end-to-end tests that assert both UI state and database/API state.
-4. Add `.gitattributes` enforcing LF for shell/entrypoint scripts and validate a fresh Windows clone in CI.
-5. Make restore create/verify pgvector with the required privilege or restore into a database where the extension is pre-created, and fail nonzero when restore is incomplete.
-6. Fix consent idempotence, migration skipped-count logic, nested interactive markup, and the broken debugger route.
-7. Only then treat real-HMS provider validation and public TLS as release gates.
-
-## Evidence files
-
-- `docs/plans/2026-07-22-complete-product-validation.md`
-- `artifacts/validation-2026-07-22/live_api_matrix.py`
-- `artifacts/validation-2026-07-22/live_api_results.json`
-- `artifacts/validation-2026-07-22/frontend-functional-results.md`
-- `backups/20260722T033250Z/memory_passport.dump`
-- `backups/20260722T033250Z/hms.dump`
+- `artifacts/remediation-2026-07-22/api-results.json`
+- `artifacts/remediation-2026-07-22/browser-results.md`
+- `artifacts/remediation-2026-07-22/restore-results.txt`
+- `docs/issue-acceptance.md`
+- `docs/specs/2026-07-22-validation-remediation-design.md`
+- `docs/plans/2026-07-22-validation-remediation-implementation.md`
