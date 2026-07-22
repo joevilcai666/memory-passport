@@ -113,5 +113,11 @@ class ApiKey(Base):
         Index("ix_api_keys_key", "key"),
     )
 
+    @property
+    def masked_key(self) -> str:
+        """Stable display value that never exposes the bearer secret."""
+        first, second, _secret = self.key.split("_", 2)
+        return f"{first}_{second}_••••{self.key[-4:]}"
+
     def __repr__(self) -> str:
         return f"<ApiKey {self.id} ({self.environment})>"

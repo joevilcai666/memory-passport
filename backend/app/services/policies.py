@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.errors import not_found
 from app.auth import TenantContext
@@ -23,6 +23,29 @@ from app.services.ids import new_policy_id, new_rule_id
 class PolicyUpsertOutcome:
     policy: MemoryPolicy
     created: bool
+
+
+def get_policy(
+    db: Session,
+    context: TenantContext,
+    *,
+    app_id: str,
+    agent_id: str,
+) -> MemoryPolicy:
+    """Read one in-tenant policy without audit or usage side effects."""
+    policy = db.scalar(
+        select(MemoryPolicy)
+        .join(App, App.id == MemoryPolicy.app_id)
+        .options(selectinload(MemoryPolicy.auto_write_rules))
+        .where(
+            MemoryPolicy.app_id == app_id,
+            MemoryPolicy.agent_id == agent_id,
+            App.tenant_id == context.tenant.id,
+        )
+    )
+    if policy is None:
+        raise not_found("Policy", f"{app_id}/{agent_id}")
+    return policy
 
 
 def upsert_policy(
@@ -98,4 +121,4 @@ def upsert_policy(
     return PolicyUpsertOutcome(policy=policy, created=created)
 
 
-__all__ = ["PolicyUpsertOutcome", "upsert_policy"]
+__all__ = ["PolicyUpsertOutcome", "get_policy", "upsert_policy"]
