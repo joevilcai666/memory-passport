@@ -139,6 +139,14 @@ export interface ApiKeyCreateInput {
   environment: Environment;
 }
 
+export interface UserCreateInput {
+  app_id: string;
+  external_user_id: string;
+  age_group: "adult" | "minor" | "unknown";
+  region: string;
+  display_name: string;
+}
+
 export interface IngestEventInput {
   user_id: string;
   agent_id: string;
@@ -257,6 +265,13 @@ export const api = {
       activeApiKeyId = replacement.id;
     }
     return replacement;
+  },
+
+  async createUser(input: UserCreateInput): Promise<User> {
+    return request("/v1/users", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   },
 
   async getMemories(userId?: string): Promise<MemoryRecord[]> {

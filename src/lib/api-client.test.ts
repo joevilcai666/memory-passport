@@ -44,6 +44,7 @@ describe("API surface", () => {
     "createApp",
     "createApiKey",
     "rotateApiKey",
+    "createUser",
     "getPolicy",
     "setUserConsent",
     "createExport",
@@ -134,6 +135,24 @@ describe("apps, keys, and runtime credentials", () => {
 });
 
 describe("policy, consent, export, and delete-user contracts", () => {
+  it("creates the Quickstart user through the provisioning endpoint", async () => {
+    fetchMock().mockResolvedValueOnce(jsonResponse({ id: "usr_1" }, 201));
+    await client.createUser({
+      app_id: "app_1",
+      external_user_id: "external_1",
+      age_group: "adult",
+      region: "US",
+      display_name: "Test User",
+    });
+    expectRequest(0, "/v1/users", "POST", {
+      app_id: "app_1",
+      external_user_id: "external_1",
+      age_group: "adult",
+      region: "US",
+      display_name: "Test User",
+    });
+  });
+
   it("uses authenticated response bodies, including Blob downloads", async () => {
     fetchMock()
       .mockResolvedValueOnce(jsonResponse({ id: "pol_1" }))
