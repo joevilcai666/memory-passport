@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "info"
+    cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Return configured browser origins, trimmed and deduplicated."""
+        return list(
+            dict.fromkeys(
+                origin.strip()
+                for origin in self.cors_allowed_origins.split(",")
+                if origin.strip()
+            )
+        )
 
     # ---- Migrations -------------------------------------------------------
     # When True the app lifespan runs `alembic upgrade head` on startup, so a

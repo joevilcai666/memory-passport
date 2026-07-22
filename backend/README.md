@@ -73,6 +73,7 @@ and `HMS_API_KEY` aliases.
 | `MP_RUN_MIGRATIONS_ON_STARTUP` | apply Alembic head on boot |
 | `MP_EXPORT_DIR` | export artifact directory |
 | `MP_EXPORT_TOKEN_TTL_SECONDS` | download token lifetime; default 900 |
+| `MP_CORS_ALLOWED_ORIGINS` | comma-separated exact browser origins; local Next.js origins by default |
 | `HMS_API_LLM_API_KEY` | real HMS general LLM key |
 | `HMS_API_RETAIN_LLM_API_KEY` | real HMS retain/extraction key |
 | `HMS_API_EMBEDDINGS_OPENAI_API_KEY` | real HMS embedding key |

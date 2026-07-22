@@ -16,6 +16,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
@@ -70,6 +71,17 @@ def create_app() -> FastAPI:
     # Auth runs first so even /v1/* routes resolve a tenant before the handler.
     # /v1/health + /docs are allowlisted inside the middleware.
     app.middleware("http")(auth_middleware)
+
+    # Add CORS after auth so Starlette wraps auth with CORS. Browser preflight
+    # requests are answered before API-key middleware can reject them.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+        max_age=600,
+    )
 
     app.include_router(health_router)
     app.include_router(v1_router)

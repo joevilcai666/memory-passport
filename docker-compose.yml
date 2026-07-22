@@ -68,6 +68,7 @@ services:
       MP_RUN_MIGRATIONS_ON_STARTUP: "true"
       MP_EXPORT_DIR: /var/lib/memory-passport/exports
       MP_EXPORT_TOKEN_TTL_SECONDS: ${MP_EXPORT_TOKEN_TTL_SECONDS:-900}
+      MP_CORS_ALLOWED_ORIGINS: ${MP_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - ./backend:/app
       - ./var/exports:/var/lib/memory-passport/exports
