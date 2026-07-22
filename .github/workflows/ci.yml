@@ -28,6 +28,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-line-endings:
+    name: Windows checkout keeps Linux entrypoints LF
+    runs-on: windows-latest
+    steps:
+      - name: Enable the common Windows autocrlf setting
+        run: git config --global core.autocrlf true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify LF entrypoints
+        shell: powershell
+        run: .\scripts\verify-line-endings.ps1
+
+      - name: Parse every shell script
+        shell: powershell
+        run: |
+          $scripts = @(git ls-files -- '*.sh')
+          foreach ($script in $scripts) {
+            bash -n $script
+            if ($LASTEXITCODE -ne 0) {
+              throw "bash syntax failed: $script"
+            }
+          }
+
   unit:
     name: Lint, build & unit test
     runs-on: ubuntu-latest

@@ -1,0 +1,4 @@
+# Linux-executed entrypoints must survive Windows autocrlf checkouts.
+*.sh text eol=lf
+Dockerfile text eol=lf
+**/Dockerfile text eol=lf
