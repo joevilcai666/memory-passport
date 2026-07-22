@@ -447,6 +447,31 @@ async def create_user(
     return user, True
 
 
+def set_user_consent(
+    db: Session,
+    context: TenantContext,
+    *,
+    user_id: str,
+    memory_enabled: bool,
+) -> User:
+    """Persist explicit user consent and audit only real state changes."""
+    user = _get_user_in_tenant(db, context.tenant.id, user_id)
+    if user.memory_enabled == memory_enabled:
+        return user
+
+    user.memory_enabled = memory_enabled
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.USER_CONSENT_CHANGED,
+        target=user.id,
+        detail=f"Set memory_enabled={memory_enabled} for user {user.id}",
+    )
+    return user
+
+
 def create_relationship(
     db: Session,
     context: TenantContext,
@@ -662,5 +687,4 @@ def wipe_device(
         ),
     )
     return device, tombstoned
-
 

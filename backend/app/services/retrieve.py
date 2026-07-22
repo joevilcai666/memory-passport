@@ -28,7 +28,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import not_found
+from app.api.errors import memory_disabled, not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
 from app.models.enums import AuditAction, MemoryStatus, PassportStatus, UsageOperation
@@ -79,6 +79,8 @@ async def retrieve_memories(
 
     # 1. Resolve caller context in-tenant.
     user = _get_user_in_tenant(db, tenant.id, user_id)
+    if not user.memory_enabled:
+        raise memory_disabled(user.id)
     if user.passport_status == PassportStatus.DELETED:
         return _deleted_passport_outcome(
             db,

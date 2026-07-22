@@ -30,7 +30,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import not_found
+from app.api.errors import memory_disabled, not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
 from app.models.enums import (
@@ -92,6 +92,8 @@ async def ingest_event(
     # 1. Resolve context in-tenant. Each lookup raises not_found (404) on
     #    cross-tenant references so existence isn't leaked.
     user = _get_user_in_tenant(db, tenant.id, user_id)
+    if not user.memory_enabled:
+        raise memory_disabled(user.id)
     agent = _get_agent_in_tenant(db, tenant.id, agent_id)
     relationship = _get_relationship_in_tenant(db, tenant.id, relationship_id)
     device = None

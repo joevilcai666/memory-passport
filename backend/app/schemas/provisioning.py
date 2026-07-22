@@ -196,6 +196,12 @@ class UserCreateRequest(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=255)
 
 
+class UserConsentRequest(BaseModel):
+    """PATCH /v1/users/{user_id}/consent — set explicit memory consent."""
+
+    memory_enabled: bool
+
+
 class RelationshipCreateRequest(BaseModel):
     """POST /v1/relationships — link a user × agent (+ optional device)."""
 
@@ -287,5 +293,6 @@ __all__ = [
     "RelationshipResponse",
     "TenantResponse",
     "UserCreateRequest",
+    "UserConsentRequest",
     "UserResponse",
 ]
