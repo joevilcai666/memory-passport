@@ -281,7 +281,102 @@ export interface TeamMember {
   email: string;
   role: TeamRole;
   avatar_color: string;
+  joined_at?: string;
   last_active: string;
+}
+
+export interface ApiKeyMetadata {
+  id: ID;
+  label: string;
+  environment: Environment;
+  masked_key: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export type AppDetail = Omit<App, "api_keys"> & {
+  api_keys: ApiKeyMetadata[];
+};
+
+export interface AppCreateResult {
+  app: Omit<App, "api_keys">;
+  api_key: ApiKey;
+}
+
+export interface ExportStatusResult {
+  export_id: ID;
+  status: "pending" | "running" | "completed" | "failed";
+  download_url: string | null;
+  expires_at: string | null;
+  error: string | null;
+}
+
+export interface DeleteUserResult {
+  user_id: ID;
+  tombstoned_memories: number;
+  hms_bank_deleted: boolean;
+  passport_status: "active" | "deleted";
+}
+
+export interface DeviceRegisterResult {
+  device: Device;
+  pairing_code: string;
+}
+
+export interface DeviceWipeResult {
+  device: Device;
+  tombstoned_memories: number;
+}
+
+export interface TeamInvite {
+  id: ID;
+  email: string;
+  role: TeamRole;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
+export interface TeamBundle {
+  members: TeamMember[];
+  pending_invites: TeamInvite[];
+}
+
+export interface TeamInviteCreateResult {
+  invite: TeamInvite;
+  token: string;
+}
+
+export interface PublicTeamInvite {
+  tenant_name: string;
+  email: string;
+  role: TeamRole;
+  expires_at: string;
+}
+
+export type TraceFeedbackCategory =
+  | "useful"
+  | "not_useful"
+  | "wrong_memory"
+  | "should_not_have_used";
+
+export interface TraceFeedback {
+  memory_id: ID;
+  category: TraceFeedbackCategory;
+  actor: string;
+  recorded_at: string;
+}
+
+export interface DebugTrace {
+  id: ID;
+  query: string;
+  caller: Record<string, unknown>;
+  hms_results: Record<string, unknown>;
+  projected: { results: RetrievedMemoryish[] } & Record<string, unknown>;
+  retrieval_events: Record<string, unknown>;
+  feedback: TraceFeedback | null;
+  created_at: string;
 }
 
 // ---- Alerts (Overview dashboard) -----------------------------------------

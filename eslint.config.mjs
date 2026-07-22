@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     "vendor/hms/**",
     // Local runtime/worktree output is never application source.
     ".worktrees/**",
+    ".runtime/**",
     "var/**",
   ]),
 ]);

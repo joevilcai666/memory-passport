@@ -3,9 +3,10 @@
 # What this runs (unit-only, fast):
 #   1. pnpm install (frozen lockfile)
 #   2. pnpm lint
-#   3. pnpm build
-#   4. ruff check app tests
-#   5. pytest -m 'not postgres and not hms and not compose'
+#   3. pnpm test --run
+#   4. pnpm build
+#   5. ruff check app tests
+#   6. pytest -m 'not postgres and not hms and not compose'
 #
 # What this does NOT run (local-only, per issue #15):
 #   - the Docker Compose stack (steps 5–6 of `make check`) — those require a
@@ -80,6 +81,9 @@ jobs:
 
       - name: Frontend lint
         run: pnpm lint
+
+      - name: Frontend unit tests
+        run: pnpm test --run
 
       - name: Frontend build
         run: pnpm build
