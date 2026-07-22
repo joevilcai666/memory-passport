@@ -180,6 +180,12 @@ class AuditAction(str, enum.Enum):
     DEVICE_WIPED = "device.wiped"
     USER_DELETED = "user.deleted"
     TENANT_HMS_PROVISIONED = "tenant.hms_provisioned"  # issue #12 multi-tenant
+    API_KEY_CREATED = "api_key.created"
+    API_KEY_ROTATED = "api_key.rotated"
+    USER_CONSENT_CHANGED = "user.consent_changed"
+    RETRIEVAL_FEEDBACK_RECORDED = "retrieval.feedback_recorded"
+    TEAM_INVITED = "team.invited"
+    TEAM_JOINED = "team.joined"
 
 
 class TeamRole(str, enum.Enum):
