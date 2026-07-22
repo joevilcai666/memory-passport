@@ -16,12 +16,14 @@ if ($LASTEXITCODE -ne 0) {
 
 $entrypoints = @(
     $tracked | Where-Object {
-        $_ -match '\.sh$' -or $_ -match '(^|/)Dockerfile$'
+        $_ -match '\.sh$' -or
+        $_ -match '(^|/)Dockerfile$' -or
+        $_ -eq '.env.example'
     }
 )
 
 if ($entrypoints.Count -eq 0) {
-    throw "No tracked shell scripts or Dockerfiles were found"
+    throw "No tracked Linux entrypoints or shell-sourced templates were found"
 }
 
 $invalid = [System.Collections.Generic.List[string]]::new()
