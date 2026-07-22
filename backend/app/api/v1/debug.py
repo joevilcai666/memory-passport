@@ -7,10 +7,23 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
 from app.auth import TenantContext
-from app.schemas.retrieve import DebugTraceResponse
-from app.services.retrieve import get_trace
+from app.schemas.retrieve import DebugTraceResponse, TraceFeedbackRequest
+from app.services.retrieve import get_trace, record_trace_feedback
 
 router = APIRouter(prefix="/v1/debug", tags=["debug"])
+
+
+def _response(trace) -> DebugTraceResponse:
+    return DebugTraceResponse(
+        id=trace.id,
+        query=trace.query,
+        caller=trace.caller,
+        hms_results=trace.hms_results,
+        projected=trace.projected,
+        retrieval_events=trace.retrieval_events,
+        feedback=trace.feedback,
+        created_at=trace.created_at,
+    )
 
 
 @router.get(
@@ -24,12 +37,27 @@ def get_trace_endpoint(
     tenant: TenantContext = TenantDep,
 ) -> DebugTraceResponse:
     trace = get_trace(db, tenant.tenant.id, trace_id)
-    return DebugTraceResponse(
-        id=trace.id,
-        query=trace.query,
-        caller=trace.caller,
-        hms_results=trace.hms_results,
-        projected=trace.projected,
-        retrieval_events=trace.retrieval_events,
-        created_at=trace.created_at,
+    return _response(trace)
+
+
+@router.post(
+    "/traces/{trace_id}/feedback",
+    response_model=DebugTraceResponse,
+    status_code=status.HTTP_200_OK,
+)
+def record_feedback_endpoint(
+    trace_id: str,
+    body: TraceFeedbackRequest,
+    db: Session = DbDep,
+    tenant: TenantContext = TenantDep,
+) -> DebugTraceResponse:
+    trace = record_trace_feedback(
+        db,
+        tenant,
+        trace_id=trace_id,
+        memory_id=body.memory_id,
+        category=body.category,
     )
+    db.commit()
+    db.refresh(trace)
+    return _response(trace)
