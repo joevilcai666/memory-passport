@@ -250,7 +250,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 flex items-center justify-center gap-2 text-xs text-muted-foreground/70">
             <Check className="size-3" />
-            <span>Prototype · seeded with the Luna dataset · no real backend</span>
+            <span>Local evaluation · Luna seed data · live FastAPI backend</span>
           </div>
         </div>
       </footer>

@@ -8,9 +8,10 @@ import {
   Check,
   Smartphone,
   Globe,
-  Cpu,
+  Pencil,
   Eye,
   Users as UsersIcon,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -53,6 +54,15 @@ import type {
   User,
 } from "@/lib/types";
 import { MemoryTraceSheet } from "@/components/memory/MemoryTraceSheet";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // ---- Config --------------------------------------------------------------
 
@@ -117,11 +127,16 @@ export default function UsersPage() {
   const agents = useMemoryStore((s) => s.agents);
   const setMemoryStatus = useMemoryStore((s) => s.setMemoryStatus);
   const deleteMemory = useMemoryStore((s) => s.deleteMemory);
+  const editMemory = useMemoryStore((s) => s.editMemory);
+  const dataMode = useMemoryStore((s) => s.dataMode);
 
   const [selectedUserId, setSelectedUserId] = React.useState<string>(users[0]?.id ?? "");
   const [typeFilter, setTypeFilter] = React.useState<"all" | MemoryType>("all");
   const [traceMemoryId, setTraceMemoryId] = React.useState<string | null>(null);
   const [traceOpen, setTraceOpen] = React.useState(false);
+  const [editingMemoryId, setEditingMemoryId] = React.useState<string | null>(null);
+  const [editText, setEditText] = React.useState("");
+  const [busyMemoryId, setBusyMemoryId] = React.useState<string | null>(null);
 
   const selectedUser: User | undefined = React.useMemo(
     () => users.find((u) => u.id === selectedUserId),
@@ -143,6 +158,60 @@ export default function UsersPage() {
   const openTrace = (id: string) => {
     setTraceMemoryId(id);
     setTraceOpen(true);
+  };
+
+  const startEdit = (memory: MemoryRecord) => {
+    setEditingMemoryId(memory.id);
+    setEditText(memory.content);
+  };
+
+  const handleEdit = async () => {
+    const memoryId = editingMemoryId;
+    const content = editText.trim();
+    if (!memoryId || !content) return;
+
+    setBusyMemoryId(memoryId);
+    try {
+      await editMemory(memoryId, content);
+      setEditingMemoryId(null);
+      toast.success("Memory updated", { description: `${memoryId} now uses the new version.` });
+    } catch (error) {
+      toast.error("Memory update failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setBusyMemoryId(null);
+    }
+  };
+
+  const handleArchive = async (memory: MemoryRecord) => {
+    setBusyMemoryId(memory.id);
+    try {
+      await setMemoryStatus(memory.id, "archived");
+      toast.success(`Archived · ${memory.id}`, { description: "Logged to audit trail." });
+    } catch (error) {
+      toast.error("Archive failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setBusyMemoryId(null);
+    }
+  };
+
+  const handleDelete = async (memory: MemoryRecord) => {
+    setBusyMemoryId(memory.id);
+    try {
+      await deleteMemory(memory.id);
+      toast.success(`Deleted · ${memory.id}`, {
+        description: "Tombstone written. Logged to audit trail.",
+      });
+    } catch (error) {
+      toast.error("Delete failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setBusyMemoryId(null);
+    }
   };
 
   return (
@@ -269,17 +338,14 @@ export default function UsersPage() {
                     memory={m}
                     agentName={agentName(m.agent_id)}
                     onClickRow={() => openTrace(m.id)}
-                    onArchive={() => {
-                      setMemoryStatus(m.id, "archived");
-                      toast(`Archived · ${m.id}`, { description: "Logged to audit trail." });
-                    }}
-                    onDelete={() => {
-                      deleteMemory(m.id);
-                      toast(`Deleted · ${m.id}`, { description: "Tombstone written. Logged to audit trail." });
-                    }}
+                    onEdit={() => startEdit(m)}
+                    onArchive={() => handleArchive(m)}
+                    onDelete={() => handleDelete(m)}
                     onViewSource={() =>
                       toast(`Source · ${m.id}`, { description: m.source.quote })
                     }
+                    busy={busyMemoryId === m.id}
+                    writesEnabled={dataMode === "live"}
                   />
                 ))}
               </TableBody>
@@ -309,6 +375,43 @@ export default function UsersPage() {
         open={traceOpen}
         onOpenChange={setTraceOpen}
       />
+
+      <Dialog
+        open={editingMemoryId !== null}
+        onOpenChange={(open) => !busyMemoryId && !open && setEditingMemoryId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit memory</DialogTitle>
+            <DialogDescription>
+              Saving creates a new version and records the change in the audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="console-memory-content" className="text-sm font-medium">
+            Memory content
+          </label>
+          <Textarea
+            id="console-memory-content"
+            value={editText}
+            onChange={(event) => setEditText(event.target.value)}
+            disabled={busyMemoryId !== null}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingMemoryId(null)}
+              disabled={busyMemoryId !== null}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={!editText.trim() || busyMemoryId !== null}>
+              {busyMemoryId ? <Loader2 className="size-4 animate-spin" /> : null}
+              {busyMemoryId ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -319,16 +422,22 @@ function MemoryRow({
   memory,
   agentName,
   onClickRow,
+  onEdit,
   onArchive,
   onDelete,
   onViewSource,
+  busy,
+  writesEnabled,
 }: {
   memory: MemoryRecord;
   agentName: string;
   onClickRow: () => void;
+  onEdit: () => void;
   onArchive: () => void;
   onDelete: () => void;
   onViewSource: () => void;
+  busy: boolean;
+  writesEnabled: boolean;
 }) {
   const portable = memory.portability.layer === "portable";
   const isDeleted = memory.status === "deleted";
@@ -387,8 +496,8 @@ function MemoryRow({
       <TableCell className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Memory actions">
-              <MoreHorizontal className="size-4" />
+            <Button variant="ghost" size="icon-sm" aria-label="Memory actions" disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -398,14 +507,14 @@ function MemoryRow({
             <DropdownMenuItem onClick={onClickRow}>
               <ExternalLink className="size-4" /> Open trace
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast("Edit mode", { description: "Inline edit would open here (prototype)." })}>
-              <Cpu className="size-4" /> Edit
+            <DropdownMenuItem onClick={onEdit} disabled={!writesEnabled || isDeleted}>
+              <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onArchive}>
+            <DropdownMenuItem onClick={onArchive} disabled={!writesEnabled || isDeleted || memory.status === "archived"}>
               <Lock className="size-4" /> Archive
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem onClick={onDelete} disabled={!writesEnabled || isDeleted} className="text-destructive focus:text-destructive">
               <span className="size-4 text-center text-base leading-none">×</span> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

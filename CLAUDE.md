@@ -25,7 +25,7 @@ This file guides AI agents (Claude Code, etc.) working in the Memory Passport re
 - **framer-motion** for animation (minimal & functional — only the migration-complete page has an "earned" signature animation).
 - **Recharts** for the Overview activity chart.
 - **lucide-react** for icons (default 16px, `strokeWidth={1.5}`).
-- **Zustand** store at `src/store/memory-store.ts` — single store. Initial state is the seeded Luna dataset from `src/lib/mock-data.ts`; on mount the store hydrates from the real backend via the `src/lib/api-client.ts` HTTP client (base URL + API key from `NEXT_PUBLIC_MP_API_URL` / `NEXT_PUBLIC_MP_API_KEY`). All mutations call the backend and update local state on success.
+- **Zustand** store at `src/store/memory-store.ts` — single store. Initial state is the seeded Luna dataset from `src/lib/mock-data.ts`; on mount the store hydrates from the real backend via the `src/lib/api-client.ts` HTTP client (base URL + evaluator key from `NEXT_PUBLIC_MP_API_URL` / `NEXT_PUBLIC_MP_API_KEY`). All mutations call the backend and update local state only on success. The browser key is local-evaluation-only; production requires a server-side session/BFF boundary.
 - **sonner** toasts — there is one global `<Toaster />` in the root layout. Use `import { toast } from "sonner"`. Do NOT mount a local `<Toaster />` per page.
 - **next-themes** for dark/light. Console defaults to dark; C-side forces light via `.paper-surface`.
 
@@ -73,7 +73,7 @@ Two App Router groups + a landing page. **Every route is real and clickable — 
   /app/memory/[id]         Memory detail (portability badges, source, used-by)
   /app/memory/delete       Delete all (type DELETE)
   /app/devices             Device management
-  /app/devices/bind        Robot binding (QR scan + pairing code)
+  /app/devices/bind        Test-device registration + one-time pairing code (no camera scanner)
   /app/migrate             Migration Preview — THE HERO (3 buckets)
   /app/migrate/complete    Migration Complete — stamp animation, v2 inherits
 ```
@@ -90,14 +90,14 @@ Two App Router groups + a landing page. **Every route is real and clickable — 
 
 - `src/lib/types.ts` — every domain entity (User, Agent, Device, Relationship, MemoryRecord with portability + model_provenance, Migration, etc.). **The source of truth for shapes.**
 - `src/lib/mock-data.ts` — the Luna dataset (42 memories across Preferences/Relationship/Events/Boundaries/Tasks/Archived, v1+v2 devices, one in-progress migration, audit logs, KPIs). Serves as the offline fallback and as the shape contract.
-- `src/lib/api-client.ts` — typed HTTP client over `NEXT_PUBLIC_MP_API_URL` with a Bearer token from `NEXT_PUBLIC_MP_API_KEY`. One method per backend endpoint family (`getMemories`, `retrieveMemories`, `ingestEvent`, `patchMemory`, `deleteMemory`, `getPolicy`/`upsertPolicy`, `previewMigration`/`executeMigration`, `getAuditLogs`, `getUsage`, …). Adapts backend JSON → `types.ts` shapes.
+- `src/lib/api-client.ts` — typed HTTP client over `NEXT_PUBLIC_MP_API_URL` with a local evaluator Bearer token from `NEXT_PUBLIC_MP_API_KEY`. One method per backend endpoint family (`getMemories`, `retrieveMemories`, `ingestEvent`, `patchMemory`, `deleteMemory`, `getPolicy`/`upsertPolicy`, `previewMigration`/`executeMigration`, `getAuditLogs`, `getUsage`, …). Adapts backend JSON → `types.ts` shapes. Never ship this public-key pattern as production auth; use a BFF.
 - `src/store/memory-store.ts` — Zustand store + all mutations. On mount it hydrates from the backend; mutations call the API client then update local state. Read selectors narrowly (e.g. `useMemoryStore(s => s.memories)`) to avoid re-render storms.
 
 ---
 
 ## Conventions & gotchas
 
-- **Never `<button>` inside `<button>`.** Invalid HTML → React hydration error. If you need a clickable container that holds other buttons, use `<div role="button" tabIndex={0}>` with an `onKeyDown` handler (see the `Bucket` component in `src/app/app/migrate/page.tsx`).
+- **Never `<button>` inside `<button>`.** Invalid HTML → React hydration error. If a disclosure header also needs an action, render two sibling buttons (see the `Bucket` component in `src/app/app/migrate/page.tsx`).
 - **Navigation links use `next/link`'s `<Link>`**, never raw `<a>` for internal routes (the `@next/next/no-html-link-for-pages` lint rule is enforced).
 - **Hydration-safe theme toggle:** the `useMounted()` helper in `Topbar.tsx` uses `useSyncExternalStore` (not setState-in-effect, which trips `react-hooks/set-state-in-effect`).
 - **Portability must be visible.** Memory Detail shows the 4 axes as ✓/✕ badges; the compact badge says "Portable · 3/4" or "Device-local". This is the productized "memory travels with me" — don't hide it.
@@ -113,11 +113,12 @@ Two App Router groups + a landing page. **Every route is real and clickable — 
 
 ```bash
 pnpm dev      # dev server on :3000 (Turbopack)
+pnpm test --run # Vitest + Testing Library frontend suite
 pnpm build    # production build — must pass with 0 errors before commit
 pnpm lint     # eslint — must pass clean (0 errors, 0 warnings is the bar)
 ```
 
-The dev server auto-restarts. There is no frontend test runner; verify changes with `pnpm lint && pnpm build` and by exercising the UI against `make demo` (backend on :8000).
+The dev server auto-restarts. Verify changes with `pnpm test --run`, `pnpm lint`, `pnpm build`, and the UI against `make demo` (backend on :8000).
 
 ---
 

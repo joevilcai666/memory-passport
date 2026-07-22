@@ -12,7 +12,7 @@ paths and response contract as real HMS.
 - `curl` and Python 3 for the executable demo
 
 ```bash
-git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --branch main --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 git submodule update --init --recursive
 cp .env.example .env   # optional in demo mode
@@ -27,6 +27,11 @@ Memory Passport local demo passed: http://127.0.0.1:8000/docs
 
 The stack binds only to loopback by default. Open Swagger at
 <http://localhost:8000/docs>.
+
+The browser frontend uses the seeded key through `NEXT_PUBLIC_MP_API_KEY` only
+for this loopback evaluation. Do not expose a tenant key in a deployed browser
+or native app. Production integration needs a server-side authenticated
+session/BFF that owns the key and proxies authorized calls.
 
 ## Shell setup
 

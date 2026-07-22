@@ -50,7 +50,7 @@ python3 --version
 在一个新的目录中执行：
 
 ```bash
-git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --branch main --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 make demo
 ```
@@ -117,8 +117,12 @@ pnpm dev
 ```
 
 然后打开 <http://localhost:3000>。`/console/*` 展示 B 端管理台，
-`/app/*` 展示终端用户的记忆与设备迁移流程。这些页面用于体验产品设计，
-目前显示的是预置前端状态；第 5 节的 API 请求才是后端能力验收。
+`/app/*` 展示终端用户的记忆与设备迁移流程。页面会连接当前运行的 FastAPI
+后端，写操作成功后才更新；后端不可达时只显示只读的预置数据。
+
+仓库为了本地验收，会通过 `NEXT_PUBLIC_MP_API_KEY` 把 Luna 沙盒 key 提供给
+浏览器。它只能用于单机评估。生产前端必须改为登录会话 + 服务端 BFF：租户 API
+key 只保存在服务端，由 BFF 校验用户权限后代理 Memory Passport 请求。
 
 ## 5. 以客户应用的身份手动写入和召回
 
