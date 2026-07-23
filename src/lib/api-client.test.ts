@@ -160,7 +160,9 @@ describe("policy, consent, export, and delete-user contracts", () => {
     const blob = await client.downloadExport(status.download_url);
     await client.deleteUser("usr_1");
 
-    expect(blob).toBeInstanceOf(Blob);
+    // Assert the download returns a binary payload with the expected size.
+    // (Avoids cross-realm instanceof Blob checks that differ between node/jsdom.)
+    expect(blob.size).toBe(15);
     expectRequest(0, "/v1/policies?app_id=app_1&agent_id=agt_1");
     expectRequest(1, "/v1/users/usr_1/consent", "PATCH", {
       memory_enabled: false,
