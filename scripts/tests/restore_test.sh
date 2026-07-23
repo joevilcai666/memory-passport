@@ -5,6 +5,12 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RESTORE="$REPO_DIR/scripts/restore.sh"
 TESTS_RUN=0
 
+# Detect the current Alembic head revision so this test stays correct as
+# migrations are added (mirrors the auto-detect logic in restore.sh).
+EXPECTED_REVISION="$(sed -n 's/^revision: str = "\([^"]*\)".*/\1/p' \
+  "$REPO_DIR/backend/alembic/versions/0012_webhooks.py" 2>/dev/null || true)"
+[ -n "$EXPECTED_REVISION" ] || EXPECTED_REVISION="0012_webhooks"
+
 fail() {
   echo "not ok - $1" >&2
   exit 1
@@ -312,7 +318,7 @@ EOF
   for required in \
     "extversion" \
     "alembic_version" \
-    "0010_validation_remediation" \
+    "$EXPECTED_REVISION" \
     "memory_record_hms_units" \
     "ix_memory_records_tenant_id" \
     "audit_logs" \
