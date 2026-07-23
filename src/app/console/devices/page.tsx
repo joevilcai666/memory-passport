@@ -3,9 +3,6 @@
 import Link from "next/link";
 import {
   Cpu,
-  RefreshCw,
-  Download,
-  MoreHorizontal,
   CircleCheck,
   ArrowLeftRight,
   TrendingUp,
@@ -30,15 +27,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useMemoryStore } from "@/store/memory-store";
 import { cn, formatRelativeDay } from "@/lib/utils";
-import { toast } from "sonner";
 import type { DeviceStatus } from "@/lib/types";
 
 // ---- Status badge ---------------------------------------------------------
@@ -87,41 +77,6 @@ function MigrationStatusBadge({ status }: { status: MigrationRow["status"] }) {
   }
 }
 
-function MigrationActions({ row }: { row: MigrationRow }) {
-  const canRetry = row.status === "failed" || row.status === "completed";
-  return (
-    <div className="flex justify-end">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Migration actions">
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {canRetry && (
-            <DropdownMenuItem
-              onClick={() =>
-                toast("Retry queued", {
-                  description: `${row.userName} · ${row.sourceGen} → ${row.targetGen}`,
-                })
-              }
-            >
-              <RefreshCw className="size-4" /> Retry
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem
-            onClick={() =>
-              toast.success("Report exported", { description: `${row.moved} memories · JSON` })
-            }
-          >
-            <Download className="size-4" /> Export report
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
 // ---- Page -----------------------------------------------------------------
 
 export default function DevicesConsolePage() {
@@ -134,46 +89,27 @@ export default function DevicesConsolePage() {
   const targetDevice = devices.find((d) => d.id === migration.target_device_id);
   const migrationUser = users.find((u) => u.id === migration.user_id);
 
-  const rows: MigrationRow[] = [
-    {
-      id: migration.id,
-      userName: migrationUser?.display_name ?? "—",
-      sourceGen: sourceDevice?.generation ?? "—",
-      targetGen: targetDevice?.generation ?? "—",
-      moved: migration.selected_memory_ids.length,
-      status:
-        migration.status === "completed"
-          ? "completed"
-          : migration.status === "failed"
-            ? "failed"
-            : "preview",
-      time: migration.created_at,
-    },
-    {
-      id: "mig_hist_alex",
-      userName: "Alex Rivera",
-      sourceGen: "v1",
-      targetGen: "v2",
-      moved: 28,
-      status: "completed",
-      time: migrationDaysAgo(2),
-    },
-    {
-      id: "mig_hist_sam",
-      userName: "Sam Okafor",
-      sourceGen: "v1",
-      targetGen: "v2",
-      moved: 12,
-      status: "failed",
-      time: migrationDaysAgo(5),
-    },
-  ];
+  const row: MigrationRow = {
+    id: migration.id,
+    userName: migrationUser?.display_name ?? "—",
+    sourceGen: sourceDevice?.generation ?? "—",
+    targetGen: targetDevice?.generation ?? "—",
+    moved: migration.selected_memory_ids.length,
+    status:
+      migration.status === "completed" || migration.status === "completed_with_warnings"
+        ? "completed"
+        : migration.status === "failed"
+          ? "failed"
+          : "preview",
+    time: migration.created_at,
+  };
 
   const currentCompleted = migration.status === "completed";
   const boundCount = devices.filter((d) => d.status === "bound").length;
-  const completedMigrations = rows.filter((r) => r.status === "completed").length;
-  const totalMigrations = rows.length;
-  const retentionRate = totalMigrations > 0 ? completedMigrations / totalMigrations : 0;
+  const wipedCount = devices.filter((device) => device.status === "wiped").length;
+  const migrationStatusLabel = migration.status
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
 
   return (
     <div className="space-y-6">
@@ -194,16 +130,16 @@ export default function DevicesConsolePage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <HealthTile
           icon={ArrowLeftRight}
-          label="Migration success"
-          value={`${(retentionRate * 100).toFixed(0)}%`}
-          sub={`${completedMigrations}/${totalMigrations} recent`}
+          label="Current migration"
+          value={migrationStatusLabel}
+          sub={migration.id}
           tone="emerald"
         />
         <HealthTile
           icon={TrendingUp}
-          label="Memory retention"
-          value="98.1%"
-          sub="across v1→v2 moves"
+          label="Memory selection"
+          value={String(migration.selected_memory_ids.length)}
+          sub={`${migration.selected_memory_ids.length} selected`}
           tone="ink"
         />
         <HealthTile
@@ -216,8 +152,8 @@ export default function DevicesConsolePage() {
         <HealthTile
           icon={ShieldCheck}
           label="Resale-safe wipes"
-          value="3"
-          sub="tombstone verified"
+          value={String(wipedCount)}
+          sub={`${wipedCount} wiped device${wipedCount === 1 ? "" : "s"}`}
           tone="neutral"
         />
       </div>
@@ -274,11 +210,11 @@ export default function DevicesConsolePage() {
         </CardContent>
       </Card>
 
-      {/* Recent migrations */}
+      {/* Current migration */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent migrations</CardTitle>
-          <CardDescription>Memory transfers between device generations.</CardDescription>
+          <CardTitle>Current migration</CardTitle>
+          <CardDescription>The migration currently loaded from the backend.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -290,12 +226,10 @@ export default function DevicesConsolePage() {
                 <TableHead>Memories moved</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Time</TableHead>
-                <TableHead className="pr-0 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow
+              <TableRow
                   key={row.id}
                   className={cn(
                     "h-[52px]",
@@ -316,11 +250,7 @@ export default function DevicesConsolePage() {
                   <TableCell className="font-mono text-xs tabular text-muted-foreground">
                     {formatRelativeDay(row.time)}
                   </TableCell>
-                  <TableCell className="pr-0">
-                    <MigrationActions row={row} />
-                  </TableCell>
                 </TableRow>
-              ))}
             </TableBody>
           </Table>
         </CardContent>
@@ -460,11 +390,4 @@ function GenerationCard({
       <p className="font-mono text-[11px] tabular text-muted-foreground">{gen}</p>
     </div>
   );
-}
-
-/** Build an ISO timestamp n days in the past for the historical rows. */
-function migrationDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
 }

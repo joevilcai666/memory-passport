@@ -1,0 +1,54 @@
+Memory Passport remediation baseline
+Captured: 2026-07-22 Asia/Shanghai
+
+Source
+------
+HEAD: 52a2697c0ab807c19cf0bac26e30d3755c34de27
+Design commit: 0fe0f54
+Plan commit: 52a2697
+
+Running services
+----------------
+postgres: healthy
+hms-api: healthy
+mp-backend: healthy
+frontend production server: HTTP 200 on http://127.0.0.1:3000/
+
+Backend health
+--------------
+GET /v1/health: HTTP 200
+{"mp":"ok","hms":"ok","db":"ok","memory_engine":"demo"}
+
+Authenticated data
+------------------
+GET /v1/memories?page_size=1: HTTP 200
+total: 42
+
+Confirmed red browser contract
+------------------------------
+OPTIONS /v1/memories
+Origin: http://127.0.0.1:3000
+Access-Control-Request-Method: GET
+Access-Control-Request-Headers: authorization
+
+HTTP/1.1 401 Unauthorized
+{"detail":"unauthenticated"}
+
+The historical validation captured a 405 on a health-route preflight. On the
+current process, auth middleware intercepts the memories preflight first and
+returns 401. Both results prove the same missing CORS contract: no
+Access-Control-Allow-Origin response is present and the browser cannot issue
+the authenticated request.
+
+Fresh local gates
+-----------------
+Frontend ESLint (direct project binary): PASS, zero output/errors
+Frontend Next build (direct project binary): PASS, Next 16.2.10, 19 routes
+Backend Ruff: PASS, "All checks passed!"
+Backend host pytest: PASS, 152 passed and 10 service-dependent skipped
+
+The workspace pnpm fallback wrapper attempted an automatic dependency refresh
+and aborted because the shell is non-interactive. Direct checked-in project
+binaries executed lint/build successfully, so this is recorded as a workspace
+runner behavior rather than a product failure. Dependency installation is
+revalidated after the frontend test toolchain is added.

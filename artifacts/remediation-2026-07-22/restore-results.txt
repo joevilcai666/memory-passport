@@ -1,0 +1,22 @@
+Memory Passport restore verification — 2026-07-22
+
+Command:
+  D:\software_data\Git\bin\bash.exe scripts/verify-restore.sh
+
+Result: PASS (exit 0)
+
+Before:
+  mp=1,3,6,12,51,3,3,2,85;hms=6,4;vector=1,1
+
+After:
+  mp=1,3,6,12,51,3,3,2,85;hms=6,4;vector=1,1
+
+Verified by the script:
+  - exact Memory Passport and HMS row parity
+  - pgvector extension present after restore
+  - vector data queryable after restore
+  - database owner access works
+  - MP, HMS, and database health returns green
+
+Backup used:
+  backups/20260722T071648Z

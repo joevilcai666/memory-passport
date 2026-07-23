@@ -11,8 +11,10 @@ from app.models.memory import AutoWriteRule, MemoryPolicy, MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.models.migration import Migration
 from app.models.retrieval_trace import RetrievalTrace
+from app.models.team import TeamInvite, TeamMember
 from app.models.tenant import ApiKey, App, Tenant
 from app.models.usage import UsageEvent
+from app.models.webhook import WebhookDelivery, WebhookEndpoint
 
 __all__ = [
     "Agent",
@@ -29,6 +31,10 @@ __all__ = [
     "Relationship",
     "RetrievalTrace",
     "Tenant",
+    "TeamInvite",
+    "TeamMember",
     "User",
     "UsageEvent",
+    "WebhookDelivery",
+    "WebhookEndpoint",
 ]

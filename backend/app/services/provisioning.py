@@ -25,11 +25,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.errors import conflict_illegal_state, forbidden, not_found
 from app.auth import TenantContext
-from app.models.enums import AuditAction, DeviceStatus, MemoryScope, MemoryStatus
+from app.models.enums import (
+    AuditAction,
+    DeviceStatus,
+    MemoryScope,
+    MemoryStatus,
+    WebhookEventType,
+)
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.tenant import ApiKey, App, Tenant
@@ -47,6 +53,7 @@ from app.services.ids import (
     new_user_id,
     tenant_hms_schema,
 )
+from app.services.webhook import record_event_for_tenant
 
 
 def _now() -> datetime:
@@ -143,6 +150,99 @@ def _get_app_in_tenant(db: Session, tenant_id: str, app_id: str) -> App:
     if row is None:
         raise not_found("App", app_id)
     return row
+
+
+def list_apps(db: Session, context: TenantContext) -> list[App]:
+    """List the caller tenant's apps with key metadata loaded."""
+    return list(
+        db.scalars(
+            select(App)
+            .options(selectinload(App.api_keys))
+            .where(App.tenant_id == context.tenant.id)
+            .order_by(App.created_at, App.id)
+        ).all()
+    )
+
+
+def get_app(db: Session, context: TenantContext, app_id: str) -> App:
+    """Return one caller-tenant app with key metadata loaded."""
+    row = db.scalar(
+        select(App)
+        .options(selectinload(App.api_keys))
+        .where(App.id == app_id, App.tenant_id == context.tenant.id)
+    )
+    if row is None:
+        raise not_found("App", app_id)
+    return row
+
+
+def create_api_key(
+    db: Session,
+    context: TenantContext,
+    *,
+    app_id: str,
+    label: str,
+    environment,
+) -> ApiKey:
+    """Create a key and return its full secret exactly once."""
+    _get_app_in_tenant(db, context.tenant.id, app_id)
+    key = ApiKey(
+        id=new_apikey_id(),
+        app_id=app_id,
+        label=label,
+        environment=environment,
+        key=new_api_key(environment.value if hasattr(environment, "value") else str(environment)),
+        created_at=_now(),
+        last_used_at=None,
+    )
+    db.add(key)
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.API_KEY_CREATED,
+        target=key.id,
+        detail=f"Created {environment} API key '{label}' for app {app_id}",
+    )
+    return key
+
+
+def rotate_api_key(
+    db: Session,
+    context: TenantContext,
+    *,
+    app_id: str,
+    key_id: str,
+) -> ApiKey:
+    """Atomically replace one in-tenant key and return the new secret."""
+    _get_app_in_tenant(db, context.tenant.id, app_id)
+    old = db.scalar(select(ApiKey).where(ApiKey.id == key_id, ApiKey.app_id == app_id))
+    if old is None:
+        raise not_found("API key", key_id)
+
+    replacement = ApiKey(
+        id=new_apikey_id(),
+        app_id=app_id,
+        label=old.label,
+        environment=old.environment,
+        key=new_api_key(old.environment.value),
+        created_at=_now(),
+        last_used_at=None,
+    )
+    db.add(replacement)
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.API_KEY_ROTATED,
+        target=replacement.id,
+        detail=f"Rotated API key {old.id} to {replacement.id} for app {app_id}",
+    )
+    db.delete(old)
+    db.flush()
+    return replacement
 
 
 def _get_user_in_tenant(db: Session, tenant_id: str, user_id: str) -> User:
@@ -354,6 +454,31 @@ async def create_user(
     return user, True
 
 
+def set_user_consent(
+    db: Session,
+    context: TenantContext,
+    *,
+    user_id: str,
+    memory_enabled: bool,
+) -> User:
+    """Persist explicit user consent and audit only real state changes."""
+    user = _get_user_in_tenant(db, context.tenant.id, user_id)
+    if user.memory_enabled == memory_enabled:
+        return user
+
+    user.memory_enabled = memory_enabled
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.USER_CONSENT_CHANGED,
+        target=user.id,
+        detail=f"Set memory_enabled={memory_enabled} for user {user.id}",
+    )
+    return user
+
+
 def create_relationship(
     db: Session,
     context: TenantContext,
@@ -472,6 +597,12 @@ def bind_device(
         target=device.id,
         detail=f"Bound Device to user {user.id} via pairing code",
     )
+    record_event_for_tenant(
+        db,
+        tenant_id=context.tenant.id,
+        event_type=WebhookEventType.DEVICE_BOUND,
+        payload={"device_id": device.id, "user_id": user.id},
+    )
     return device
 
 
@@ -501,6 +632,12 @@ def unbind_device(db: Session, context: TenantContext, *, device_id: str) -> Dev
             if previous_user
             else "Unbound Device"
         ),
+    )
+    record_event_for_tenant(
+        db,
+        tenant_id=context.tenant.id,
+        event_type=WebhookEventType.DEVICE_UNBOUND,
+        payload={"device_id": device.id, "user_id": previous_user},
     )
     return device
 
@@ -569,5 +706,4 @@ def wipe_device(
         ),
     )
     return device, tombstoned
-
 

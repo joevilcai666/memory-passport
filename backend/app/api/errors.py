@@ -51,3 +51,14 @@ def conflict_illegal_state(current: str, action: str) -> HTTPException:
             "action": action,
         },
     )
+
+
+def memory_disabled(user_id: str) -> HTTPException:
+    """409 — the user has explicitly disabled memory operations."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "memory_disabled",
+            "message": f"memory is disabled for user {user_id}",
+        },
+    )

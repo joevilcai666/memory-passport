@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -66,7 +66,20 @@ class DebugTraceResponse(BaseModel):
     hms_results: dict[str, Any]
     projected: dict[str, Any]
     retrieval_events: dict[str, Any]
+    feedback: dict[str, Any] | None = None
     created_at: datetime
+
+
+class TraceFeedbackRequest(BaseModel):
+    """Operator feedback for one memory projected by this trace."""
+
+    memory_id: ID
+    category: Literal[
+        "useful",
+        "not_useful",
+        "wrong_memory",
+        "should_not_have_used",
+    ]
 
 
 __all__ = [
@@ -74,4 +87,5 @@ __all__ = [
     "RetrieveRequest",
     "RetrieveResponse",
     "RetrievedMemory",
+    "TraceFeedbackRequest",
 ]

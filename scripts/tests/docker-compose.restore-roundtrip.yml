@@ -1,0 +1,5 @@
+services:
+  hms-api:
+    image: ${MP_RESTORE_TEST_BACKEND_IMAGE:?set MP_RESTORE_TEST_BACKEND_IMAGE}
+  mp-backend:
+    image: ${MP_RESTORE_TEST_BACKEND_IMAGE:?set MP_RESTORE_TEST_BACKEND_IMAGE}

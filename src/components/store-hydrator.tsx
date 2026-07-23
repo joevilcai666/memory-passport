@@ -2,17 +2,12 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+
 import { useMemoryStore } from "@/store/memory-store";
 
-/**
- * Triggers the store's backend hydration once on mount, and surfaces a
- * dismissible toast when the backend is unreachable so the operator knows the
- * UI is rendering the seeded demo dataset instead of live data.
- *
- * Mount this exactly once near the root layout. It renders nothing.
- */
+/** Hydrate once and disclose when the UI is showing read-only demo data. */
 export function StoreHydrator() {
-  const hydrate = useMemoryStore((s) => s.hydrate);
+  const hydrate = useMemoryStore((state) => state.hydrate);
   const shownRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -22,11 +17,10 @@ export function StoreHydrator() {
       shownRef.current = true;
       // Read the post-hydrate state directly from the store to avoid an
       // extra reactive subscription (the banner only needs to fire once).
-      const reachable = useMemoryStore.getState().backendReachable;
-      if (!reachable) {
-        toast.warning("Backend offline — showing demo data", {
+      if (useMemoryStore.getState().dataMode === "offline-demo") {
+        toast.warning("Memory Passport unavailable — showing read-only demo data", {
           description:
-            "Start the backend with `make demo` and reload to see live data. Mutations stay local until then.",
+            "Run `make demo`, check server-only MP_API_URL/MP_API_KEY, then reload. Demo data is never mutated.",
           duration: Infinity,
           closeButton: true,
         });

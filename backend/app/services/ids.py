@@ -76,6 +76,14 @@ def new_apikey_id() -> str:
     return _token("key")
 
 
+def new_team_member_id() -> str:
+    return _token("tm")
+
+
+def new_team_invite_id() -> str:
+    return _token("tmi")
+
+
 def new_audit_id() -> str:
     return _token("al")
 
@@ -98,6 +106,26 @@ def new_usage_id() -> str:
 
 def new_export_id() -> str:
     return _token("exp")
+
+
+def new_webhook_id() -> str:
+    """WebhookEndpoint id."""
+    return _token("wh")
+
+
+def new_webhook_delivery_id() -> str:
+    """WebhookDelivery row id (distinct from the globally-unique event_id)."""
+    return _token("whd")
+
+
+def new_webhook_event_id() -> str:
+    """Globally-unique event id receivers deduplicate on (at-least-once)."""
+    return f"evt_{secrets.token_urlsafe(_TOKEN_BYTES)}"
+
+
+def new_webhook_signing_secret() -> str:
+    """One-time HMAC signing secret for a webhook endpoint (24 bytes → ~32 chars)."""
+    return f"whsec_{secrets.token_urlsafe(_APIKEY_SECRET_BYTES)}"
 
 
 def new_pairing_code() -> str:

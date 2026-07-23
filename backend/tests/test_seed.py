@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.db.base import _JSON_DUMPS, Base
 from app.db.session import reset_engine_for_tests
 from app.models.identity import User
+from app.models.team import TeamMember
 from app.seed import data as seed_data
 from tests.service_dependencies import postgres_available
 
@@ -109,6 +110,24 @@ def test_seed_users_are_the_four_expected(fresh_pg_db):
     with session_scope() as db:
         ids = {u.id for u in db.query(User).all()}
     assert ids == {"usr_mia", "usr_alex", "usr_sam", "usr_jordan"}
+
+
+@pg_only
+def test_seed_team_members_match_console_contract(fresh_pg_db):
+    """Seeded team is persisted with all three V0.1 roles."""
+    from app.db.session import session_scope
+    from app.seed.run_seed import seed_mp
+
+    seed_mp()
+    with session_scope() as db:
+        members = db.query(TeamMember).order_by(TeamMember.id).all()
+
+    assert [member.email for member in members] == [
+        "mia@luna.inc",
+        "dev@luna.inc",
+        "sara@luna.inc",
+    ]
+    assert {member.role.value for member in members} == {"Owner", "Admin", "Support"}
 
 
 @pg_only

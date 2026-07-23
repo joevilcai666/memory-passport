@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "info"
+    cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Return configured browser origins, trimmed and deduplicated."""
+        return list(
+            dict.fromkeys(
+                origin.strip()
+                for origin in self.cors_allowed_origins.split(",")
+                if origin.strip()
+            )
+        )
 
     # ---- Migrations -------------------------------------------------------
     # When True the app lifespan runs `alembic upgrade head` on startup, so a
@@ -72,6 +84,13 @@ class Settings(BaseSettings):
     # ---- Model-neutral exports -------------------------------------------
     export_dir: str = "/tmp/memory-passport-exports"
     export_token_ttl_seconds: int = 900
+
+    # ---- Webhooks (#33) ---------------------------------------------------
+    # At-least-once HMAC-signed delivery via BackgroundTasks (no worker queue
+    # in V0.1's single-process deployment). These bound retries/timeouts so a
+    # dead endpoint cannot block the user-facing transaction.
+    webhook_delivery_timeout_seconds: float = 10.0
+    webhook_max_attempts: int = 4
 
     @property
     def async_database_url(self) -> str:

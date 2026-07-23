@@ -26,8 +26,14 @@ Requirements for the API demo: Docker Desktop/Engine with either
 22+ and pnpm 10+ are only required for the optional frontend and frontend
 release checks.
 
+On Windows, WSL2 is the recommended full `make demo` path. Native PowerShell
+has an equivalent documented Compose/bootstrap/health path. Windows checkout
+and line endings are CI-gated; full runtime sign-off remains a manual gate on
+the customer's target Windows/WSL2 environment. See
+[`docs/windows.md`](docs/windows.md).
+
 ```bash
-git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --branch main --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 cp .env.example .env        # optional for the default demo
 make demo
@@ -42,6 +48,11 @@ ingest, retrieve, versioned edit, export, delete, audit, and usage over HTTP.
 - Frontend (separate terminal): `pnpm install && pnpm dev`, then
   <http://localhost:3000>
 - Seeded bearer key: `mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd`
+
+The seeded key is exposed to the browser only for single-machine evaluation.
+It is not a production authentication design. A deployed UI must authenticate
+the user through a server-side session/BFF, keep tenant API keys on that
+server, and proxy authorized Memory Passport calls.
 
 Useful commands:
 
@@ -93,6 +104,10 @@ self-service pieces to move past that:
 - **Backups + restore** — `make backup` dumps both databases;
   `make restore STAMP=<timestamp>` replays them
   ([`scripts/backup.sh`](scripts/backup.sh), [`scripts/restore.sh`](scripts/restore.sh)).
+  Restore pre-creates pgvector with the administrator role, restores all other
+  objects as the database owner, and fails on any archive or verification
+  error. `make restore-verify` performs a destructive backup/restore parity
+  check against the default local stack.
 - **Monitoring** — scrape `GET /v1/health` (returns 503 when HMS or DB is
   down); example Prometheus config in the guide.
 
@@ -157,9 +172,11 @@ The frontend preserves the interactive Luna story:
 The UI is wired to the FastAPI backend via a typed HTTP client
 (`src/lib/api-client.ts`); on mount it hydrates memories, audit logs, and
 usage from the backend, and mutations (edit, delete, policy, migration, …)
-call the backend live. When the backend is unreachable, the store falls back
-to the seeded Luna dataset so the UI keeps rendering. The backend is also
-independently runnable and fully testable through its HTTP API.
+call the backend live. Success state is shown only after the API resolves.
+When the backend is unreachable, the store falls back to the seeded Luna
+dataset in read-only mode so the UI keeps rendering without pretending that
+writes succeeded. The backend is also independently runnable and fully
+testable through its HTTP API.
 
 ## License and security
 

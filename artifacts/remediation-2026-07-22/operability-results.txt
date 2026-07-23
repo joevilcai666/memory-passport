@@ -1,0 +1,29 @@
+Windows line-ending verification
+================================
+
+Red reproduction, before .gitattributes:
+- fresh clone created with core.autocrlf=true
+- verifier failed on backend/Dockerfile and five tracked shell scripts
+
+Green verification, after commits 7685dfd and 647843a:
+- fresh clone created with core.autocrlf=true
+- LF verification passed for 8 Linux entrypoints/shell-sourced templates
+- bash syntax passed for all 6 tracked shell scripts
+
+Backup/restore verification
+===========================
+
+Red reproduction, original restore.sh:
+- pg_restore returned two errors per database
+- non-superuser mp/hms roles could not CREATE EXTENSION vector
+- script printed success and exited 0 after swallowing each nonzero result
+
+Green verification, repaired restore.sh:
+- backup: backups/20260722T052050Z
+- before: mp=1,1,4,4,42,0,1,1,8;hms=4,0;vector=1,1
+- after:  mp=1,1,4,4,42,0,1,1,8;hms=4,0;vector=1,1
+- pg_restore used --exit-on-error and returned zero for both databases
+- pgvector present in both databases
+- database owners can read every restored application table
+- all three Compose services returned healthy after restore
+- scripts/verify-restore.sh exited 0

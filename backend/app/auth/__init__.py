@@ -17,22 +17,45 @@ from fastapi import status
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.models.enums import TeamRole
 from app.models.tenant import ApiKey, App, Tenant
 
 
 @dataclass
 class TenantContext:
-    """The resolved caller attached to ``request.state.tenant``."""
+    """The resolved caller attached to ``request.state.tenant``.
+
+    ``role`` carries the operator RBAC role linked to this API key (issue #32).
+    It is ``None`` for customer backend-to-backend keys and the seeded sandbox
+    key; the :func:`app.api.deps.require_role` dependency treats ``None`` as
+    Owner so the local-evaluation sandbox stays authoritative, while a linked
+    Support key is refused sensitive mutations.
+    """
 
     api_key: ApiKey
     app: App
     tenant: Tenant
+    role: TeamRole | None = None
+
+    @property
+    def effective_role(self) -> TeamRole:
+        """The role used for authorization; null → Owner (sandbox/customer keys)."""
+        return self.role if self.role is not None else TeamRole.OWNER
+
+    @property
+    def actor(self) -> str:
+        """Audit actor string for this caller."""
+        member_id = getattr(self.api_key, "team_member_id", None)
+        if member_id:
+            return f"operator:{member_id}"
+        return f"api:{self.api_key.id}"
 
 
 # Paths that never require auth: health, docs, openapi, redoc, favicon.
 # Matching is prefix-based so /docs/oauth2-redirect and /openapi.json both pass.
 PUBLIC_PATH_PREFIXES = (
     "/v1/health",
+    "/v1/public/team-invites",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -87,7 +110,9 @@ async def auth_middleware(request: Request, call_next):
                     status_code=status.HTTP_403_FORBIDDEN,
                     content={"detail": "app_paused"},
                 )
-            context = TenantContext(api_key=api_key, app=app, tenant=tenant)
+            context = TenantContext(
+                api_key=api_key, app=app, tenant=tenant, role=api_key.role
+            )
     except Exception:
         # DB errors are 500s, not 401s — don't leak auth state on infra failure.
         raise

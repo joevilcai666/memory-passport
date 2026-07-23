@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
 from app.hms import HmsError, hms_client_for_tenant
-from app.schemas.provisioning import UserCreateRequest, UserResponse
+from app.schemas.provisioning import UserConsentRequest, UserCreateRequest, UserResponse
 from app.services import provisioning
 
 router = APIRouter(prefix="/v1", tags=["provisioning"])
@@ -49,4 +49,22 @@ async def create_user(
         ) from exc
 
     db.commit()
+    return UserResponse.model_validate(user)
+
+
+@router.patch("/users/{user_id}/consent", response_model=UserResponse)
+def update_user_consent(
+    user_id: str,
+    body: UserConsentRequest,
+    db: Session = DbDep,
+    tenant=TenantDep,
+) -> UserResponse:
+    user = provisioning.set_user_consent(
+        db,
+        tenant,
+        user_id=user_id,
+        memory_enabled=body.memory_enabled,
+    )
+    db.commit()
+    db.refresh(user)
     return UserResponse.model_validate(user)

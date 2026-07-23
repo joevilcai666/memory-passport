@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.runtime/
 /.pnp
 .pnp.*
 .yarn/*
@@ -49,6 +50,10 @@ yarn-error.log*
 
 # operator backups (scripts/backup.sh writes here by default)
 /backups/
+
+# local validation outputs containing generated credentials/tokens
+/artifacts/remediation-2026-07-22/api-results.json
+/artifacts/validation-2026-07-22/live_api_results.json
 
 # local agent/IDE session workspace (not part of the repo)
 .zcode/

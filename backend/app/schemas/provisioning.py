@@ -62,6 +62,17 @@ class ApiKeyResponse(_OrmModel):
     last_used_at: datetime | None = None
 
 
+class ApiKeyMaskedResponse(_OrmModel):
+    """Key metadata safe for repeated list/detail responses."""
+
+    id: ID
+    label: str
+    environment: Environment
+    masked_key: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+
 class AppResponse(_OrmModel):
     """``App`` — see src/lib/types.ts:21.
 
@@ -78,6 +89,14 @@ class AppResponse(_OrmModel):
     show_powered_by: bool
     status: AppStatus
     created_at: datetime
+
+
+class AppDetailResponse(AppResponse):
+    api_keys: list[ApiKeyMaskedResponse]
+
+
+class AppListResponse(BaseModel):
+    items: list[AppDetailResponse]
 
 
 class UserResponse(_OrmModel):
@@ -147,6 +166,11 @@ class AppCreateRequest(BaseModel):
     show_powered_by: bool = True
 
 
+class ApiKeyCreateRequest(BaseModel):
+    label: str = Field(..., min_length=1, max_length=255)
+    environment: Environment
+
+
 class AgentCreateRequest(BaseModel):
     """POST /v1/agents — create an Agent under an App."""
 
@@ -170,6 +194,12 @@ class UserCreateRequest(BaseModel):
     age_group: AgeGroup = AgeGroup.UNKNOWN
     region: str = Field(..., min_length=1, max_length=64)
     display_name: str = Field(..., min_length=1, max_length=255)
+
+
+class UserConsentRequest(BaseModel):
+    """PATCH /v1/users/{user_id}/consent — set explicit memory consent."""
+
+    memory_enabled: bool
 
 
 class RelationshipCreateRequest(BaseModel):
@@ -245,8 +275,12 @@ __all__ = [
     "AgentCreateRequest",
     "AgentResponse",
     "ApiKeyResponse",
+    "ApiKeyCreateRequest",
+    "ApiKeyMaskedResponse",
     "AppCreateRequest",
     "AppCreateResponse",
+    "AppDetailResponse",
+    "AppListResponse",
     "AppResponse",
     "DeviceBindRequest",
     "DeviceRegisterRequest",
@@ -259,5 +293,6 @@ __all__ = [
     "RelationshipResponse",
     "TenantResponse",
     "UserCreateRequest",
+    "UserConsentRequest",
     "UserResponse",
 ]

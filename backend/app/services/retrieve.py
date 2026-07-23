@@ -25,10 +25,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.errors import not_found
+from app.api.errors import memory_disabled, not_found
 from app.auth import TenantContext
 from app.hms import HmsClient, HmsError
 from app.models.enums import AuditAction, MemoryStatus, PassportStatus, UsageOperation
@@ -90,6 +91,8 @@ async def retrieve_memories(
             query=query,
             model=model,
         )
+    if not user.memory_enabled:
+        raise memory_disabled(user.id)
     _get_agent_in_tenant(db, tenant.id, agent_id)
     _get_relationship_in_tenant(db, tenant.id, relationship_id)
     device_status: str | None = None
@@ -296,6 +299,48 @@ def get_trace(db: Session, tenant_id: str, trace_id: str) -> RetrievalTrace:
     if row is None:
         raise not_found("Trace", trace_id)
     return row
+
+
+def record_trace_feedback(
+    db: Session,
+    context: TenantContext,
+    *,
+    trace_id: str,
+    memory_id: str,
+    category: str,
+) -> RetrievalTrace:
+    """Upsert feedback for a memory actually projected by this trace."""
+    trace = get_trace(db, context.tenant.id, trace_id)
+    projected_ids = {
+        item.get("id")
+        for item in trace.projected.get("results", [])
+        if isinstance(item, dict)
+    }
+    if memory_id not in projected_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "invalid_feedback_target",
+                "message": f"memory {memory_id} was not projected by trace {trace_id}",
+            },
+        )
+
+    trace.feedback = {
+        "memory_id": memory_id,
+        "category": category,
+        "actor": api_actor(context.api_key.id),
+        "recorded_at": _now().isoformat(),
+    }
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=context.tenant.id,
+        actor=api_actor(context.api_key.id),
+        action=AuditAction.RETRIEVAL_FEEDBACK_RECORDED,
+        target=trace.id,
+        detail=f"Recorded {category} feedback for memory {memory_id}",
+    )
+    return trace
 
 
 # ---------------------------------------------------------------------------

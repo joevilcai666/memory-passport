@@ -44,6 +44,8 @@ class RetrievalTrace(Base):
     # Per-model RetrievalEvent rows appended to each returned memory's
     # model_provenance.retrieval_history — the cross-model parity data.
     retrieval_events: Mapped[dict[str, Any]] = mapped_column(jsonb(), nullable=False)
+    # Latest operator feedback for one projected memory in this trace.
+    feedback: Mapped[dict[str, Any] | None] = mapped_column(jsonb(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
 
     __table_args__ = (

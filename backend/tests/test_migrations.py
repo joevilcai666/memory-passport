@@ -66,6 +66,7 @@ def test_upgrade_head_creates_all_tables(empty_pg_url):
         "tenants", "apps", "api_keys", "users", "agents", "devices",
         "relationships", "memory_records", "memory_policies", "auto_write_rules",
         "migrations", "audit_logs",
+        "team_members", "team_invites",
     }
     assert expected <= tables, f"missing tables: {expected - tables}"
 

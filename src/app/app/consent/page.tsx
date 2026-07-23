@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, X, ShieldCheck, Sparkles } from "lucide-react";
+import { Check, X, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
 import { useMemoryStore } from "@/store/memory-store";
@@ -23,12 +23,23 @@ const willNotSave = [
 
 export default function ConsentPage() {
   const router = useRouter();
-  const toggleMemoryEnabled = useMemoryStore((s) => s.toggleMemoryEnabled);
+  const setMemoryEnabled = useMemoryStore((s) => s.setMemoryEnabled);
+  const [turningOn, setTurningOn] = React.useState(false);
 
-  const handleTurnOn = () => {
-    toggleMemoryEnabled();
-    toast.success("Memory is on", { description: "Luna will remember what matters to you." });
-    setTimeout(() => router.push("/app/memory"), 600);
+  const handleTurnOn = async () => {
+    if (turningOn) return;
+    setTurningOn(true);
+    try {
+      await setMemoryEnabled(true);
+      toast.success("Memory is on", { description: "Luna will remember what matters to you." });
+      router.push("/app/memory");
+    } catch (error) {
+      toast.error("Memory could not be enabled", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setTurningOn(false);
+    }
   };
 
   return (
@@ -94,8 +105,9 @@ export default function ConsentPage() {
 
         {/* Actions */}
         <div className="flex flex-col gap-2.5">
-          <Button size="lg" onClick={handleTurnOn} className="w-full">
-            Turn on
+          <Button size="lg" onClick={handleTurnOn} className="w-full" disabled={turningOn}>
+            {turningOn && <Loader2 className="size-4 animate-spin" />}
+            {turningOn ? "Turning on..." : "Turn on"}
           </Button>
           <Button size="lg" variant="outline" className="w-full" onClick={() => router.push("/app/memory")}>
             Not now
