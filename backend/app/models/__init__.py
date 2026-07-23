@@ -14,6 +14,7 @@ from app.models.retrieval_trace import RetrievalTrace
 from app.models.team import TeamInvite, TeamMember
 from app.models.tenant import ApiKey, App, Tenant
 from app.models.usage import UsageEvent
+from app.models.webhook import WebhookDelivery, WebhookEndpoint
 
 __all__ = [
     "Agent",
@@ -34,4 +35,6 @@ __all__ = [
     "TeamMember",
     "User",
     "UsageEvent",
+    "WebhookDelivery",
+    "WebhookEndpoint",
 ]

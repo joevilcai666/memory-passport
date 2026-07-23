@@ -19,12 +19,14 @@ from app.models.enums import (
     MemoryStatus,
     MemoryType,
     UsageOperation,
+    WebhookEventType,
 )
 from app.models.memory import MemoryRecord
 from app.models.memory_mapping import MemoryRecordHmsUnit
 from app.services.audit import api_actor, write_audit
 from app.services.ids import new_event_id, new_memory_id
 from app.services.usage import write_usage
+from app.services.webhook import record_event_for_tenant
 
 LEGAL: dict[MemoryStatus, set[MemoryStatus]] = {
     MemoryStatus.CANDIDATE: {
@@ -292,6 +294,12 @@ async def delete_memory(
         action=AuditAction.MEMORY_DELETED,
         target=record.id,
         detail=f"Tombstoned memory {record.id} and suppressed its HMS mapping",
+    )
+    record_event_for_tenant(
+        db,
+        tenant_id=record.tenant_id,
+        event_type=WebhookEventType.MEMORY_DELETED,
+        payload={"memory_id": record.id, "user_id": record.user_id},
     )
     write_usage(db, record.tenant_id, record.user_id, UsageOperation.DELETE)
     return record

@@ -29,7 +29,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.errors import conflict_illegal_state, forbidden, not_found
 from app.auth import TenantContext
-from app.models.enums import AuditAction, DeviceStatus, MemoryScope, MemoryStatus
+from app.models.enums import (
+    AuditAction,
+    DeviceStatus,
+    MemoryScope,
+    MemoryStatus,
+    WebhookEventType,
+)
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
 from app.models.tenant import ApiKey, App, Tenant
@@ -47,6 +53,7 @@ from app.services.ids import (
     new_user_id,
     tenant_hms_schema,
 )
+from app.services.webhook import record_event_for_tenant
 
 
 def _now() -> datetime:
@@ -590,6 +597,12 @@ def bind_device(
         target=device.id,
         detail=f"Bound Device to user {user.id} via pairing code",
     )
+    record_event_for_tenant(
+        db,
+        tenant_id=context.tenant.id,
+        event_type=WebhookEventType.DEVICE_BOUND,
+        payload={"device_id": device.id, "user_id": user.id},
+    )
     return device
 
 
@@ -619,6 +632,12 @@ def unbind_device(db: Session, context: TenantContext, *, device_id: str) -> Dev
             if previous_user
             else "Unbound Device"
         ),
+    )
+    record_event_for_tenant(
+        db,
+        tenant_id=context.tenant.id,
+        event_type=WebhookEventType.DEVICE_UNBOUND,
+        payload={"device_id": device.id, "user_id": previous_user},
     )
     return device
 

@@ -1,6 +1,6 @@
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; else echo "docker-compose"; fi)
 
-.PHONY: help build demo up down clean seed check real-config real-up real-down tls-up tls-down backup restore restore-verify test-backup test-restore test-restore-roundtrip
+.PHONY: help build demo up down clean seed check real-config real-up real-down tls-up tls-down backup restore restore-verify test-backup test-restore test-restore-roundtrip check-e2e
 
 help: ## Show local evaluator commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -75,3 +75,15 @@ test-restore: ## Run non-destructive restore command/failure-path tests
 
 test-restore-roundtrip: ## Run destructive restore test in a unique disposable Compose project
 	./scripts/tests/restore_roundtrip.sh
+
+check-e2e: ## Run the browser→API→database E2E gate against a clean seeded stack
+	$(COMPOSE) down --volumes --remove-orphans
+	$(COMPOSE) up -d --wait --remove-orphans
+	$(COMPOSE) exec -T mp-backend alembic upgrade head
+	$(COMPOSE) exec -T mp-backend python -m app.seed.run_seed
+	pnpm build
+	MP_API_URL=http://127.0.0.1:8000 MP_API_KEY=mp_sandbox_LK39sn8vQ4x2pRwY1tBz0Hd \
+	  MP_GATEWAY_ALLOW_UNAUTHENTICATED=true pnpm start --hostname 127.0.0.1 --port 3000 & \
+	  SERVER_PID=$$!; \
+	for i in $$(seq 1 60); do curl -sf http://127.0.0.1:3000 >/dev/null && break; sleep 1; done; \
+	pnpm test:e2e; EXIT=$$?; kill $$SERVER_PID 2>/dev/null || true; exit $$EXIT

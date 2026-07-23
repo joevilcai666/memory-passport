@@ -85,6 +85,13 @@ class Settings(BaseSettings):
     export_dir: str = "/tmp/memory-passport-exports"
     export_token_ttl_seconds: int = 900
 
+    # ---- Webhooks (#33) ---------------------------------------------------
+    # At-least-once HMAC-signed delivery via BackgroundTasks (no worker queue
+    # in V0.1's single-process deployment). These bound retries/timeouts so a
+    # dead endpoint cannot block the user-facing transaction.
+    webhook_delivery_timeout_seconds: float = 10.0
+    webhook_max_attempts: int = 4
+
     @property
     def async_database_url(self) -> str:
         """DATABASE_URL rewritten for SQLAlchemy's async driver.

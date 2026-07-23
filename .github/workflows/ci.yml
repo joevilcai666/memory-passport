@@ -114,3 +114,77 @@ jobs:
       - name: Unit tests (exclude integration markers)
         working-directory: backend
         run: pytest -m 'not postgres and not hms and not compose' -q
+
+  e2e:
+    name: Browser → API → database E2E gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout (with vendor/hms submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ---- Start a clean seeded Compose stack ------------------------------
+      - name: Set up Docker Compose
+        run: docker compose version
+
+      - name: Start clean seeded stack
+        run: |
+          docker compose down --volumes --remove-orphans
+          docker compose up -d --wait --remove-orphans
+          docker compose exec -T mp-backend alembic upgrade head
+          docker compose exec -T mp-backend python -m app.seed.run_seed
+
+      # ---- Frontend production server ---------------------------------------
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production UI
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E gate
+        env:
+          MP_API_URL: http://127.0.0.1:8000
+          MP_API_KEY: mp_sandbox_LK39sn8vQ4x2pRwY1tBz0Hd
+          MP_GATEWAY_ALLOW_UNAUTHENTICATED: "true"
+        run: |
+          pnpm start --hostname 127.0.0.1 --port 3000 &
+          SERVER_PID=$!
+          # Wait for the production server to accept connections.
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000 >/dev/null && break
+            sleep 1
+          done
+          pnpm test:e2e
+          EXIT=$?
+          kill $SERVER_PID 2>/dev/null || true
+          exit $EXIT
+
+      - name: Publish Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+
+      - name: Dump backend logs on failure
+        if: failure()
+        run: docker compose logs mp-backend || true

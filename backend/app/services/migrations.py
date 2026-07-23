@@ -17,6 +17,7 @@ from app.models.enums import (
     MemoryStatus,
     MigrationStatus,
     OldDeviceAccess,
+    WebhookEventType,
 )
 from app.models.identity import Device, Relationship, User
 from app.models.memory import MemoryRecord
@@ -30,6 +31,7 @@ from app.schemas.migrations import (
 )
 from app.services.audit import api_actor, write_audit
 from app.services.ids import new_migration_id
+from app.services.webhook import record_event_for_tenant
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,15 @@ def execute_migration(
         migration.status = MigrationStatus.FAILED
         migration.completed_at = None
         migration.audit_log_id = None
+        record_event_for_tenant(
+            db,
+            tenant_id=context.tenant.id,
+            event_type=WebhookEventType.MIGRATION_FAILED,
+            payload={
+                "migration_id": migration.id,
+                "failed_count": len(failed_ids),
+            },
+        )
     else:
         migration.status = (
             MigrationStatus.COMPLETED_WITH_WARNINGS
@@ -194,6 +205,17 @@ def execute_migration(
             ),
         )
         migration.audit_log_id = audit.id
+        record_event_for_tenant(
+            db,
+            tenant_id=context.tenant.id,
+            event_type=WebhookEventType.MIGRATION_COMPLETED,
+            payload={
+                "migration_id": migration.id,
+                "migrated_count": len(successful_ids),
+                "failed_count": len(failed_ids),
+                "status": migration.status.value,
+            },
+        )
     db.flush()
     return migration
 

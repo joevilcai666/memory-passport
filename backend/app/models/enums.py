@@ -186,12 +186,35 @@ class AuditAction(str, enum.Enum):
     RETRIEVAL_FEEDBACK_RECORDED = "retrieval.feedback_recorded"
     TEAM_INVITED = "team.invited"
     TEAM_JOINED = "team.joined"
+    WEBHOOK_CREATED = "webhook.created"
+    WEBHOOK_DELIVERED = "webhook.delivered"
+    WEBHOOK_FAILED = "webhook.failed"
 
 
 class TeamRole(str, enum.Enum):
     OWNER = "Owner"
     ADMIN = "Admin"
     SUPPORT = "Support"
+
+
+class WebhookEventType(str, enum.Enum):
+    """Lifecycle events a tenant webhook endpoint may subscribe to (#33)."""
+
+    MEMORY_CREATED = "memory.created"
+    MEMORY_NEEDS_CONFIRMATION = "memory.needs_confirmation"
+    MEMORY_DELETED = "memory.deleted"
+    MIGRATION_COMPLETED = "migration.completed"
+    MIGRATION_FAILED = "migration.failed"
+    DEVICE_BOUND = "device.bound"
+    DEVICE_UNBOUND = "device.unbound"
+
+
+class WebhookDeliveryStatus(str, enum.Enum):
+    """At-least-once delivery record lifecycle."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
 
 
 class SourceType(str, enum.Enum):
@@ -241,5 +264,7 @@ PG_PASSPORT_STATUS = _pg_enum(PassportStatus, "passport_status")
 PG_EXPORT_STATUS = _pg_enum(ExportStatus, "export_status")
 PG_AUDIT_ACTION = _pg_enum(AuditAction, "audit_action")
 PG_TEAM_ROLE = _pg_enum(TeamRole, "team_role")
+PG_WEBHOOK_EVENT_TYPE = _pg_enum(WebhookEventType, "webhook_event_type")
+PG_WEBHOOK_DELIVERY_STATUS = _pg_enum(WebhookDeliveryStatus, "webhook_delivery_status")
 PG_SOURCE_TYPE = _pg_enum(SourceType, "source_type")
 PG_ALERT_SEVERITY = _pg_enum(AlertSeverity, "alert_severity")

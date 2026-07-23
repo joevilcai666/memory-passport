@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import DbDep, TenantDep
+from app.api.deps import DbDep, OperatorOrAdminDep, TenantDep
 from app.schemas.policies import PolicyResponse, PolicyUpsertRequest
 from app.services.policies import get_policy, upsert_policy
 
@@ -24,7 +24,9 @@ def read_policy(
     )
 
 
-@router.post("", response_model=PolicyResponse)
+# Policy mutation is an operator-only action (issue #32 RBAC): Owner/Admin may
+# change it; Support and any lower role receive 403 insufficient_role.
+@router.post("", response_model=PolicyResponse, dependencies=[OperatorOrAdminDep])
 def post_policy(
     body: PolicyUpsertRequest,
     response: Response,

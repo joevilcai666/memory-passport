@@ -38,6 +38,7 @@ from app.models.enums import (
     MemoryScope,
     MemoryStatus,
     UsageOperation,
+    WebhookEventType,
 )
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import MemoryRecord
@@ -52,6 +53,7 @@ from app.services.policy import (
     status_for_sensitivity,
 )
 from app.services.usage import write_usage
+from app.services.webhook import record_event_for_tenant
 
 
 def _now() -> datetime:
@@ -210,6 +212,21 @@ async def ingest_event(
                 f"Auto-written from {source_type} event {event_id} "
                 f"({classification.memory_type.value}/{classification.sensitivity.value})"
             ),
+        )
+        # Fire subscribed webhook events (no-op when the tenant has no endpoint).
+        record_event_for_tenant(
+            db,
+            tenant_id=tenant.id,
+            event_type=WebhookEventType.MEMORY_NEEDS_CONFIRMATION
+            if status == MemoryStatus.CANDIDATE
+            else WebhookEventType.MEMORY_CREATED,
+            payload={
+                "memory_id": mp_id,
+                "user_id": user.id,
+                "agent_id": agent.id,
+                "event_id": event_id,
+                "status": status.value,
+            },
         )
         results.append((mp_id, "ADD"))
 

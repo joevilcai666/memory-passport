@@ -21,6 +21,7 @@ from app.api.v1.policies import router as policies_router
 from app.api.v1.relationships import router as relationships_router
 from app.api.v1.team import router as team_router
 from app.api.v1.users import router as users_router
+from app.api.v1.webhooks import router as webhooks_router
 
 router = APIRouter()
 router.include_router(aggregates_router)
@@ -36,5 +37,6 @@ router.include_router(migrations_router)
 router.include_router(policies_router)
 router.include_router(debug_router)
 router.include_router(team_router)
+router.include_router(webhooks_router)
 
 __all__ = ["router"]

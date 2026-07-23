@@ -16,11 +16,13 @@ from app.models.enums import (
     PG_DATA_REGION,
     PG_ENVIRONMENT,
     PG_PRODUCT_TYPE,
+    PG_TEAM_ROLE,
     PG_TENANT_PLAN,
     AppStatus,
     DataRegion,
     Environment,
     ProductType,
+    TeamRole,
     TenantPlan,
 )
 from app.services.ids import new_hms_key, tenant_hms_schema
@@ -106,6 +108,13 @@ class ApiKey(Base):
     key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Optional link to a console team member for operator RBAC (issue #32).
+    # Null for customer backend-to-backend keys; a null role is treated as Owner
+    # by the local-evaluation sandbox so the seeded demo key stays authoritative.
+    team_member_id: Mapped[str | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    role: Mapped[TeamRole | None] = mapped_column(PG_TEAM_ROLE, nullable=True)
 
     app: Mapped[App] = relationship(back_populates="api_keys")
 

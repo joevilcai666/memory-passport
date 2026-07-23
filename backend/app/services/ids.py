@@ -108,6 +108,26 @@ def new_export_id() -> str:
     return _token("exp")
 
 
+def new_webhook_id() -> str:
+    """WebhookEndpoint id."""
+    return _token("wh")
+
+
+def new_webhook_delivery_id() -> str:
+    """WebhookDelivery row id (distinct from the globally-unique event_id)."""
+    return _token("whd")
+
+
+def new_webhook_event_id() -> str:
+    """Globally-unique event id receivers deduplicate on (at-least-once)."""
+    return f"evt_{secrets.token_urlsafe(_TOKEN_BYTES)}"
+
+
+def new_webhook_signing_secret() -> str:
+    """One-time HMAC signing secret for a webhook endpoint (24 bytes → ~32 chars)."""
+    return f"whsec_{secrets.token_urlsafe(_APIKEY_SECRET_BYTES)}"
+
+
 def new_pairing_code() -> str:
     """8-char alphanumeric one-time code for device bind authorization."""
     # Rejection-sample from the url-safe alphabet so the code is unambiguous
