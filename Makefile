@@ -82,7 +82,7 @@ check-e2e: ## Run the browser→API→database E2E gate against a clean seeded s
 	$(COMPOSE) exec -T mp-backend alembic upgrade head
 	$(COMPOSE) exec -T mp-backend python -m app.seed.run_seed
 	pnpm build
-	MP_API_URL=http://127.0.0.1:8000 MP_API_KEY=mp_sandbox_LK39sn8vQ4x2pRwY1tBz0Hd \
+	MP_API_URL=http://127.0.0.1:8000 MP_API_KEY=mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd \
 	  MP_GATEWAY_ALLOW_UNAUTHENTICATED=true pnpm start --hostname 127.0.0.1 --port 3000 & \
 	  SERVER_PID=$$!; \
 	for i in $$(seq 1 60); do curl -sf http://127.0.0.1:3000 >/dev/null && break; sleep 1; done; \

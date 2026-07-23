@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 
 const API_URL = process.env.MP_API_URL ?? "http://127.0.0.1:8000";
 const API_KEY =
-  process.env.MP_API_KEY ?? "mp_sandbox_LK39sn8vQ4x2pRwY1tBz0Hd";
+  process.env.MP_API_KEY ?? "mp_sandbox_LK39sn8vQ4x2pR7wY1tBz0Hd";
 const authHeaders = { Authorization: `Bearer ${API_KEY}` };
 
 /** Independent API read — the "database truth" behind each browser action. */
