@@ -26,6 +26,7 @@ from app.models.audit import AuditLog
 from app.models.identity import Agent, Device, Relationship, User
 from app.models.memory import AutoWriteRule, MemoryPolicy, MemoryRecord
 from app.models.migration import Migration
+from app.models.team import TeamMember
 from app.models.tenant import ApiKey, App, Tenant
 from app.seed import data as seed_data
 
@@ -83,6 +84,7 @@ def seed_mp() -> dict[str, int]:
         counts["relationships"] = _upsert_all(db, Relationship, seed_data.relationships())
         counts["memory_records"] = _upsert_all(db, MemoryRecord, seed_data.memories())
         counts["migrations"] = _upsert_all(db, Migration, [seed_data.migration()])
+        counts["team_members"] = _upsert_all(db, TeamMember, seed_data.team_members())
         counts["audit_logs"] = _upsert_all(db, AuditLog, seed_data.audit_logs())
 
     return counts

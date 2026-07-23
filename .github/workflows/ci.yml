@@ -3,10 +3,11 @@
 # What this runs (unit-only, fast):
 #   1. Unix script portability validation
 #   2. Restore failure-path tests
-#   3. pnpm install + Vitest
-#   4. pnpm lint + build
+#   3. pnpm install (frozen lockfile)
+#   4. pnpm lint + build + test
 #   5. ruff check app tests
 #   6. pytest -m 'not postgres and not hms and not compose'
+# Plus a Windows job that verifies line endings survive autocrlf clones.
 #
 # What this does NOT run (local-only, per issue #15):
 #   - the final Docker Compose steps of `make check` — those require a
@@ -29,6 +30,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-line-endings:
+    name: Windows checkout keeps Linux entrypoints LF
+    runs-on: windows-latest
+    steps:
+      - name: Enable the common Windows autocrlf setting
+        run: git config --global core.autocrlf true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify LF entrypoints
+        shell: powershell
+        run: .\scripts\verify-line-endings.ps1
+
+      - name: Parse every shell script
+        shell: powershell
+        run: |
+          $scripts = @(git ls-files -- '*.sh')
+          foreach ($script in $scripts) {
+            bash -n $script
+            if ($LASTEXITCODE -ne 0) {
+              throw "bash syntax failed: $script"
+            }
+          }
+
   unit:
     name: Lint, build & unit test
     runs-on: ubuntu-latest
@@ -48,8 +74,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          # Pinned for reproducibility (package.json has no packageManager field).
-          version: 10
+          version: 10.34.5
 
       - name: Setup Node
         uses: actions/setup-node@v4

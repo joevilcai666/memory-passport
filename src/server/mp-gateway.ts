@@ -3,19 +3,44 @@ import "server-only";
 const PRODUCT_ENDPOINTS: Readonly<Record<string, readonly RegExp[]>> = {
   GET: [
     /^v1\/health$/,
+    /^v1\/apps$/,
+    /^v1\/apps\/[^/]+$/,
     /^v1\/memories$/,
     /^v1\/audit_logs$/,
     /^v1\/usage$/,
+    /^v1\/policies$/,
     /^v1\/migrations\/[^/]+$/,
+    /^v1\/exports\/[^/]+$/,
+    // Token-gated one-shot download (no tenant credential needed; auth is the
+    // single-use query token issued by the export status endpoint).
+    /^v1\/exports\/[^/]+\/download$/,
+    /^v1\/team$/,
+    /^v1\/debug\/traces\/[^/]+$/,
+    // Public (unauthenticated) single-use invite preview by token.
+    /^v1\/public\/team-invites\/[^/]+$/,
   ],
   POST: [
+    /^v1\/apps$/,
+    /^v1\/apps\/[^/]+\/api-keys$/,
+    /^v1\/apps\/[^/]+\/api-keys\/[^/]+\/rotate$/,
+    /^v1\/users$/,
     /^v1\/events\/ingest$/,
     /^v1\/memories\/retrieve$/,
     /^v1\/policies$/,
     /^v1\/migrations\/(?:preview|execute)$/,
     /^v1\/migrations\/[^/]+\/rollback$/,
+    /^v1\/exports$/,
+    /^v1\/delete_user$/,
+    /^v1\/devices\/(?:register|bind|unbind|wipe)$/,
+    /^v1\/team\/invites$/,
+    // Public (unauthenticated) single-use invite acceptance by token.
+    /^v1\/public\/team-invites\/[^/]+\/accept$/,
+    /^v1\/debug\/traces\/[^/]+\/feedback$/,
   ],
-  PATCH: [/^v1\/memories\/[^/]+$/],
+  PATCH: [
+    /^v1\/memories\/[^/]+$/,
+    /^v1\/users\/[^/]+\/consent$/,
+  ],
   DELETE: [/^v1\/memories\/[^/]+$/],
 };
 

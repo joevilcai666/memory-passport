@@ -31,14 +31,7 @@ import {
 } from "@/components/ui/table";
 import { useMemoryStore } from "@/store/memory-store";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { Agent, MemoryRecord, RetrievalEvent } from "@/lib/types";
-
-const REASONS = [
-  "semantic match · 0.91",
-  "scope match · 0.88",
-  "temporal · 0.79",
-  "boundary guard · 1.00",
-];
+import type { Agent, RetrievalEvent, TraceFeedbackCategory } from "@/lib/types";
 
 const PROJECTION_HEADER = "Relevant long-term memories for this user:";
 const PROJECTION_FOOTER =
@@ -64,6 +57,15 @@ export function MemoryTraceSheet({
   const memories = useMemoryStore((s) => s.memories);
   const currentUser = useMemoryStore((s) => s.currentUser);
   const agents = useMemoryStore((s) => s.agents);
+  const lastTraceId = useMemoryStore((s) => s.lastTraceId);
+  const storedTrace = useMemoryStore((s) => s.lastTrace);
+  const recordTraceFeedback = useMemoryStore((s) => s.recordTraceFeedback);
+  const [feedbackSelection, setFeedbackSelection] = React.useState<{
+    traceId: string;
+    memoryId: string;
+    category: TraceFeedbackCategory;
+  } | null>(null);
+  const [savingFeedback, setSavingFeedback] = React.useState<TraceFeedbackCategory | null>(null);
 
   const memory = React.useMemo(
     () => memories.find((m) => m.id === memoryId),
@@ -82,24 +84,18 @@ export function MemoryTraceSheet({
     )[0];
   }, [memory]);
 
+  const trace = storedTrace?.id === lastTraceId ? storedTrace : null;
   const model =
-    latestRetrieval?.model ?? memory?.model_provenance.created_by_model ?? "gpt-4o";
+    (typeof trace?.caller.model === "string" ? trace.caller.model : null) ??
+    latestRetrieval?.model ??
+    memory?.model_provenance.created_by_model ??
+    "unknown";
 
-  const retrievedSet: MemoryRecord[] = React.useMemo(() => {
-    if (!memory) return [];
-    const siblings = memories.filter(
-      (m) =>
-        m.user_id === memory.user_id &&
-        m.id !== memory.id &&
-        m.status === "active" &&
-        m.portability.layer === "portable",
-    );
-    return [memory, ...siblings.slice(0, 3)];
-  }, [memories, memory]);
-
-  const projectionLines = React.useMemo(
-    () => retrievedSet.map((m) => `- ${m.content}`),
-    [retrievedSet],
+  const retrievedSet = trace?.projected.results ?? [];
+  const memoryWasProjected =
+    memory != null && retrievedSet.some((result) => result.id === memory.id);
+  const projectionLines = retrievedSet.map((result) =>
+    `- ${result.content ?? `[${result.id}]`}`,
   );
 
   const retrievalHistory = React.useMemo<RetrievalEvent[]>(
@@ -125,10 +121,44 @@ export function MemoryTraceSheet({
       (v) => v.used === Array.from(perModel.values())[0].used,
     );
 
-  const recordFeedback = (msg: string) =>
-    toast(msg, {
-      description: `Feedback recorded for ${memory?.id ?? "this memory"}.`,
-    });
+  const localSelectedFeedback =
+    feedbackSelection?.traceId === lastTraceId &&
+    feedbackSelection.memoryId === memoryId
+      ? feedbackSelection.category
+      : null;
+  const persistedFeedback =
+    trace?.feedback?.memory_id === memoryId ? trace.feedback.category : null;
+  const selectedFeedback = localSelectedFeedback ?? persistedFeedback;
+  const feedbackUnavailableReason = !lastTraceId
+    ? "Run a retrieve test first to create a real trace for feedback."
+    : !trace
+      ? "The trace details are unavailable; run the retrieve test again."
+      : !memoryWasProjected
+        ? "This memory was not projected by the loaded trace."
+        : null;
+
+  const recordFeedback = async (category: TraceFeedbackCategory) => {
+    if (!memory || !lastTraceId || !memoryWasProjected || savingFeedback) return;
+    setSavingFeedback(category);
+    try {
+      const trace = await recordTraceFeedback(lastTraceId, {
+        memory_id: memory.id,
+        category,
+      });
+      setFeedbackSelection({
+        traceId: lastTraceId,
+        memoryId: memory.id,
+        category: trace.feedback?.category ?? category,
+      });
+      toast.success("Feedback recorded");
+    } catch (error) {
+      toast.error("Feedback could not be recorded", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setSavingFeedback(null);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -190,9 +220,9 @@ export function MemoryTraceSheet({
                 <Meta
                   label="Time"
                   value={
-                    latestRetrieval ? (
+                    trace ? (
                       <span className="font-mono text-xs tabular text-muted-foreground">
-                        {formatDateTime(latestRetrieval.timestamp)}
+                        {formatDateTime(trace.created_at)}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -209,7 +239,7 @@ export function MemoryTraceSheet({
               </p>
               <div className="flex justify-end">
                 <p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed">
-                  how should I talk to {currentUser.display_name.split(" ")[0]} tonight?
+                  {trace?.query ?? "No live retrieval query is loaded."}
                 </p>
               </div>
             </div>
@@ -233,7 +263,7 @@ export function MemoryTraceSheet({
                   <TableBody>
                     {retrievedSet.map((m, i) => {
                       const isFocus = m.id === memory.id;
-                      const used = isFocus ? latestRetrieval?.used ?? true : i < 3;
+                      const used = true;
                       return (
                         <TableRow key={m.id}>
                           <TableCell className="pl-3 font-mono text-xs tabular text-muted-foreground">
@@ -252,7 +282,7 @@ export function MemoryTraceSheet({
                           </TableCell>
                           <TableCell>
                             <span className="font-mono text-[10px] tabular text-muted-foreground">
-                              {REASONS[i % REASONS.length]}
+                              projected
                             </span>
                           </TableCell>
                           <TableCell className="pr-3 text-right">
@@ -291,17 +321,46 @@ export function MemoryTraceSheet({
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Was this retrieval good?
               </p>
+              {feedbackUnavailableReason && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  {feedbackUnavailableReason}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => recordFeedback("Feedback recorded: Useful")}>
+                <Button
+                  variant={selectedFeedback === "useful" ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={selectedFeedback === "useful"}
+                  disabled={!memoryWasProjected || savingFeedback !== null}
+                  onClick={() => recordFeedback("useful")}
+                >
                   <ThumbsUp className="size-3.5" /> Useful
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => recordFeedback("Feedback recorded: Not useful")}>
+                <Button
+                  variant={selectedFeedback === "not_useful" ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={selectedFeedback === "not_useful"}
+                  disabled={!memoryWasProjected || savingFeedback !== null}
+                  onClick={() => recordFeedback("not_useful")}
+                >
                   <ThumbsDown className="size-3.5" /> Not useful
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => recordFeedback("Feedback recorded: Wrong memory")}>
+                <Button
+                  variant={selectedFeedback === "wrong_memory" ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={selectedFeedback === "wrong_memory"}
+                  disabled={!memoryWasProjected || savingFeedback !== null}
+                  onClick={() => recordFeedback("wrong_memory")}
+                >
                   <AlertTriangle className="size-3.5" /> Wrong
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => recordFeedback("Feedback recorded: Should not have used")}>
+                <Button
+                  variant={selectedFeedback === "should_not_have_used" ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={selectedFeedback === "should_not_have_used"}
+                  disabled={!memoryWasProjected || savingFeedback !== null}
+                  onClick={() => recordFeedback("should_not_have_used")}
+                >
                   <X className="size-3.5" /> Should not have
                 </Button>
               </div>

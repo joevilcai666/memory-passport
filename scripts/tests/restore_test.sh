@@ -275,9 +275,11 @@ EOF
     "pg_restore -U postgres -d memory_passport" \
     "privileged vector creation must happen before archive restore"
   [[ "$log" == *"pg_restore -U postgres"*"--exit-on-error"*"--single-transaction"* ]] || \
-    fail "archive restore must run privileged, atomically, and stop on errors"
-  [[ "$log" != *"--role=mp"* && "$log" != *"--role=hms"* ]] || \
-    fail "service roles must not be used for privileged archive replay"
+    fail "archive restore must run atomically and stop on errors"
+  [[ "$log" == *"--no-owner --role=mp"*"--use-list="* ]] || \
+    fail "MP application objects must restore as the MP owner from a filtered list"
+  [[ "$log" == *"--no-owner --role=hms"*"--use-list="* ]] || \
+    fail "HMS application objects must restore as the HMS owner from a filtered list"
   echo "ok - extension is created privileged before archive restore"
   TESTS_RUN=$((TESTS_RUN + 1))
 }
@@ -310,7 +312,7 @@ EOF
   for required in \
     "extversion" \
     "alembic_version" \
-    "0009_tenant_hms_credentials" \
+    "0010_validation_remediation" \
     "memory_record_hms_units" \
     "ix_memory_records_tenant_id" \
     "audit_logs" \

@@ -76,6 +76,14 @@ def new_apikey_id() -> str:
     return _token("key")
 
 
+def new_team_member_id() -> str:
+    return _token("tm")
+
+
+def new_team_invite_id() -> str:
+    return _token("tmi")
+
+
 def new_audit_id() -> str:
     return _token("al")
 

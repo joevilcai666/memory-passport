@@ -27,6 +27,7 @@ describe("authoritative memory edits", () => {
       memories: [original],
       auditLogs: auditBefore,
       backendReachable: true,
+      dataMode: "live",
     });
 
     const result = await useMemoryStore
@@ -54,15 +55,15 @@ describe("authoritative memory edits", () => {
     useMemoryStore.setState({
       memories: [original],
       backendReachable: true,
+      dataMode: "live",
     });
 
-    const result = await useMemoryStore
-      .getState()
-      .editMemory(original.id, "This must never appear as saved");
-
-    expect(result).toBeNull();
+    await expect(
+      useMemoryStore
+        .getState()
+        .editMemory(original.id, "This must never appear as saved"),
+    ).rejects.toThrow();
     expect(useMemoryStore.getState().memories).toEqual([original]);
-    expect(useMemoryStore.getState().memoryMutationError).toContain("502");
   });
 
   it("does not mutate seeded data when the backend is unavailable", async () => {
@@ -74,18 +75,13 @@ describe("authoritative memory edits", () => {
     useMemoryStore.setState({
       memories: [original],
       backendReachable: false,
-      memoryMutationError: null,
+      dataMode: "offline-demo",
     });
 
-    const result = await useMemoryStore
-      .getState()
-      .editMemory(original.id, "An offline fake edit");
-
-    expect(result).toBeNull();
+    await expect(
+      useMemoryStore.getState().editMemory(original.id, "An offline fake edit"),
+    ).rejects.toThrow(/read-only/i);
     expect(useMemoryStore.getState().memories).toEqual([original]);
-    expect(useMemoryStore.getState().memoryMutationError).toMatch(
-      /unavailable.*not saved/i,
-    );
     expect(browserFetch).not.toHaveBeenCalled();
   });
 
@@ -105,16 +101,15 @@ describe("authoritative memory edits", () => {
     useMemoryStore.setState({
       memories: [original],
       backendReachable: true,
-      memoryMutationError: null,
+      dataMode: "live",
     });
 
-    const result = await useMemoryStore
-      .getState()
-      .editMemory(original.id, "An unauthorized fake edit");
-
-    expect(result).toBeNull();
+    await expect(
+      useMemoryStore
+        .getState()
+        .editMemory(original.id, "An unauthorized fake edit"),
+    ).rejects.toThrow();
     expect(useMemoryStore.getState().memories).toEqual([original]);
-    expect(useMemoryStore.getState().memoryMutationError).toContain("401");
   });
 });
 
@@ -135,7 +130,11 @@ describe("authoritative hydration", () => {
     );
 
     const { useMemoryStore } = await import("@/store/memory-store");
-    useMemoryStore.setState({ hydrated: false, backendReachable: false });
+    useMemoryStore.setState({
+      hydrated: false,
+      backendReachable: false,
+      dataMode: "loading",
+    });
 
     await useMemoryStore.getState().hydrate();
 

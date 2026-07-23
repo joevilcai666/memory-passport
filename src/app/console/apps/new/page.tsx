@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Cpu, Layers, Check, ArrowRight } from "lucide-react";
+import { Bot, Cpu, Layers, Check, ArrowRight, Copy, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/select";
 import { PoweredByMemoryPassport } from "@/components/brand/PoweredByMemoryPassport";
 import { cn } from "@/lib/utils";
-import type { ProductType } from "@/lib/types";
+import { useMemoryStore } from "@/store/memory-store";
+import { toast } from "sonner";
+import type { Environment, ProductType } from "@/lib/types";
 
 const productTypes: { value: ProductType; icon: typeof Bot; title: string; desc: string }[] = [
   { value: "software", icon: Bot, title: "Software companion", desc: "AI friend, character, mood companion, or pet app." },
@@ -28,13 +30,49 @@ const productTypes: { value: ProductType; icon: typeof Bot; title: string; desc:
 
 export default function NewAppPage() {
   const router = useRouter();
+  const createApp = useMemoryStore((state) => state.createApp);
   const [name, setName] = React.useState("");
   const [productType, setProductType] = React.useState<ProductType>("hybrid");
-  const [environment, setEnvironment] = React.useState("sandbox");
-  const [region, setRegion] = React.useState("us-east-1");
+  const [environment, setEnvironment] = React.useState<Environment>("sandbox");
+  const [region, setRegion] = React.useState<"us-east-1" | "eu-west-1" | "ap-southeast-1">("us-east-1");
   const [showPoweredBy, setShowPoweredBy] = React.useState(true);
+  const [creating, setCreating] = React.useState(false);
+  const [createdKey, setCreatedKey] = React.useState<string | null>(null);
 
   const canCreate = name.trim().length > 0;
+
+  const handleCreate = async () => {
+    if (!canCreate || creating) return;
+    setCreating(true);
+    try {
+      const result = await createApp({
+        name: name.trim(),
+        product_type: productType,
+        environment,
+        data_region: region,
+        show_powered_by: showPoweredBy,
+      });
+      setCreatedKey(result.api_key.key);
+    } catch (error) {
+      toast.error("App creation failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copyCreatedKey = async () => {
+    if (!createdKey) return;
+    try {
+      await navigator.clipboard.writeText(createdKey);
+      toast.success("API key copied");
+    } catch (error) {
+      toast.error("Could not copy API key", {
+        description: error instanceof Error ? error.message : "Clipboard unavailable",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -114,7 +152,7 @@ export default function NewAppPage() {
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Environment</Label>
-                <Select value={environment} onValueChange={setEnvironment}>
+                <Select value={environment} onValueChange={(value) => setEnvironment(value as Environment)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="sandbox">Sandbox</SelectItem>
@@ -124,7 +162,7 @@ export default function NewAppPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Data region</Label>
-                <Select value={region} onValueChange={setRegion}>
+                <Select value={region} onValueChange={(value) => setRegion(value as typeof region)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="us-east-1">us-east-1</SelectItem>
@@ -194,19 +232,45 @@ export default function NewAppPage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => router.back()}>
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              disabled={!canCreate}
-              onClick={() => router.push("/console/quickstart")}
-            >
-              Create app
-              <ArrowRight className="size-4" />
-            </Button>
-          </div>
+          {createdKey ? (
+            <Card className="border-amber-500/40 bg-amber-500/5">
+              <CardHeader>
+                <CardTitle className="text-base">Save this API key now</CardTitle>
+                <CardDescription>
+                  This secret is shown once. Store it before continuing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 overflow-x-auto rounded-md bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-100">
+                    {createdKey}
+                  </code>
+                  <Button variant="outline" size="icon-sm" onClick={copyCreatedKey} aria-label="Copy new API key">
+                    <Copy className="size-3.5" />
+                  </Button>
+                </div>
+                <Button className="w-full" onClick={() => router.push("/console/quickstart")}>
+                  Continue to quickstart
+                  <ArrowRight className="size-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => router.back()} disabled={creating}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                disabled={!canCreate || creating}
+                onClick={handleCreate}
+              >
+                {creating ? <Loader2 className="size-4 animate-spin" /> : null}
+                {creating ? "Creating..." : "Create app"}
+                {!creating && <ArrowRight className="size-4" />}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

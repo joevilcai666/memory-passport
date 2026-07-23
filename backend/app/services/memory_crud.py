@@ -27,7 +27,11 @@ from app.services.ids import new_event_id, new_memory_id
 from app.services.usage import write_usage
 
 LEGAL: dict[MemoryStatus, set[MemoryStatus]] = {
-    MemoryStatus.CANDIDATE: {MemoryStatus.ACTIVE, MemoryStatus.NEEDS_REVIEW},
+    MemoryStatus.CANDIDATE: {
+        MemoryStatus.ACTIVE,
+        MemoryStatus.NEEDS_REVIEW,
+        MemoryStatus.DELETED,
+    },
     MemoryStatus.ACTIVE: {
         MemoryStatus.ARCHIVED,
         MemoryStatus.NEEDS_REVIEW,
@@ -35,6 +39,10 @@ LEGAL: dict[MemoryStatus, set[MemoryStatus]] = {
         MemoryStatus.EXPIRED,
         MemoryStatus.FLAGGED_WRONG,
     },
+    MemoryStatus.ARCHIVED: {MemoryStatus.DELETED},
+    MemoryStatus.NEEDS_REVIEW: {MemoryStatus.DELETED},
+    MemoryStatus.EXPIRED: {MemoryStatus.DELETED},
+    MemoryStatus.FLAGGED_WRONG: {MemoryStatus.DELETED},
 }
 
 
@@ -263,9 +271,9 @@ async def delete_memory(
     hms_client: HmsClient,
     memory_id: str,
 ) -> MemoryRecord:
-    """Tombstone a live memory and suppress its HMS recall mapping."""
+    """Tombstone a non-deleted memory and suppress its HMS recall mapping."""
     record = _get_memory(db, context.tenant.id, memory_id)
-    if record.status != MemoryStatus.ACTIVE:
+    if MemoryStatus.DELETED not in LEGAL.get(record.status, set()):
         raise _illegal_transition(record.status, MemoryStatus.DELETED)
     mapping = db.get(MemoryRecordHmsUnit, record.id)
     if mapping is not None and not _has_other_live_document_mapping(db, mapping):

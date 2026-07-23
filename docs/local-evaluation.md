@@ -13,10 +13,11 @@ paths and response contract as real HMS.
 
 Windows evaluators should use WSL2 for the full `make demo` workflow. The native
 PowerShell Compose path and its role/database verification are documented in
-[`windows.md`](windows.md), pending real-Windows acceptance before sign-off.
+[`windows.md`](windows.md). Windows checkout and line endings are CI-gated;
+full native/WSL2 customer runtime sign-off remains a separate manual gate.
 
 ```bash
-git clone --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --branch main --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 git submodule update --init --recursive
 cp .env.example .env   # optional in demo mode
@@ -31,6 +32,12 @@ Memory Passport local demo passed: http://127.0.0.1:8000/docs
 
 The stack binds only to loopback by default. Open Swagger at
 <http://localhost:8000/docs>.
+
+The browser frontend calls the same-origin `/api/mp` gateway. Only the Next.js
+server runtime reads `MP_API_URL` and `MP_API_KEY`; the tenant key is never
+shipped to the browser. Production remains fail-closed until an operator
+session/RBAC boundary is added, unless a trusted local evaluator explicitly
+enables the documented override.
 
 ## Shell setup
 
@@ -221,8 +228,17 @@ retrieve path returns an empty, auditable trace without calling HMS.
 make check       # complete local release gate
 make down        # preserve database and exports
 make demo        # idempotently upsert seed data and run the customer journey
+make backup      # dump both databases under backups/<timestamp>
+make restore STAMP=<timestamp>  # destructive, fail-fast restore
+make restore-verify             # destructive backup/restore parity test
 make clean       # destructive: delete database volumes and local stack state
 ```
+
+Restore creates pgvector with the Postgres administrator before replaying
+application objects as the `mp` and `hms` owners. It exits nonzero if
+`pg_restore`, extension checks, expected relations, or owner access fail. The
+verification target additionally compares default-stack row counts before and
+after restore and waits for the API to return healthy.
 
 Troubleshooting:
 

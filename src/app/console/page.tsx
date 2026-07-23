@@ -31,7 +31,11 @@ const severityConfig: Record<AlertSeverity, { icon: typeof AlertCircle; color: s
 };
 
 export default function OverviewPage() {
-  const { kpis, alerts, app, tenant, memories, quickstart } = useMemoryStore();
+  const { kpis, alerts, app, tenant, memories, quickstart, migration, dataMode, backendReachable } = useMemoryStore();
+  const isLive = dataMode === "live" && backendReachable;
+  const migrationLabel = isLive
+    ? migration.status.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase())
+    : "Unavailable";
 
   return (
     <div className="space-y-6">
@@ -45,12 +49,12 @@ export default function OverviewPage() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <KpiTile label="Memory MAU" value={kpis.memoryMau} format="number" icon={Users} delta="12%" />
-        <KpiTile label="Memory Ops" value={kpis.memoryOps} format="number" icon={Zap} delta="8%" />
-        <KpiTile label="Useful Rate" value={kpis.usefulRate} format="percent" icon={ThumbsUp} delta="2.1%" />
-        <KpiTile label="False Rate" value={kpis.falseRate} format="percent" icon={AlertTriangle} delta="0.4%" deltaPositive={false} />
-        <KpiTile label="Migrations OK" value={kpis.migrationSuccess} format="percent" icon={ArrowLeftRight} delta="1.2%" />
-        <KpiTile label="Cross-Model Parity" value={kpis.crossModelParity} format="percent" icon={Shuffle} delta="0.03" />
+        <KpiTile label="Memory MAU" value={kpis.memoryMau} format="number" icon={Users} />
+        <KpiTile label="Memory Ops" value={kpis.memoryOps} format="number" icon={Zap} />
+        <KpiTile label="Useful Rate" value={isLive ? "N/A" : kpis.usefulRate} format="percent" icon={ThumbsUp} />
+        <KpiTile label="False Rate" value={isLive ? "N/A" : kpis.falseRate} format="percent" icon={AlertTriangle} />
+        <KpiTile label="Migrations OK" value={isLive ? "N/A" : kpis.migrationSuccess} format="percent" icon={ArrowLeftRight} />
+        <KpiTile label="Cross-Model Parity" value={isLive ? "N/A" : kpis.crossModelParity} format="percent" icon={Shuffle} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
@@ -58,10 +62,12 @@ export default function OverviewPage() {
         <Card>
           <CardHeader>
             <CardTitle>Memory activity</CardTitle>
-            <CardDescription>Reads vs writes · last 7 days</CardDescription>
+            <CardDescription>
+              {isLive ? "Analytics time series is not exposed by the backend yet." : "Illustrative demo · reads vs writes · last 7 days"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="mb-4 flex items-center gap-4 text-xs">
+            {!isLive && <div className="mb-4 flex items-center gap-4 text-xs">
               <span className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-chart-1" />
                 <span className="text-muted-foreground">Reads</span>
@@ -70,8 +76,12 @@ export default function OverviewPage() {
                 <span className="size-2 rounded-full bg-chart-2" />
                 <span className="text-muted-foreground">Writes</span>
               </span>
-            </div>
-            <ActivityChart />
+            </div>}
+            {isLive ? (
+              <p className="py-16 text-center text-sm text-muted-foreground">No live activity series available.</p>
+            ) : (
+              <ActivityChart />
+            )}
           </CardContent>
         </Card>
 
@@ -79,10 +89,12 @@ export default function OverviewPage() {
         <Card>
           <CardHeader>
             <CardTitle>Alerts</CardTitle>
-            <CardDescription>Items needing attention</CardDescription>
+            <CardDescription>{isLive ? "Live alert feed is not exposed yet." : "Illustrative demo items"}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {alerts.map((alert) => {
+            {isLive ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">No live alert feed available.</p>
+            ) : alerts.map((alert) => {
               const cfg = severityConfig[alert.severity];
               const Icon = cfg.icon;
               return (
@@ -134,17 +146,32 @@ export default function OverviewPage() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>System</span>
-              <Badge variant="success" className="gap-1">
+              <Badge variant={isLive ? "success" : "secondary"} className="gap-1">
                 <CheckCircle2 className="size-3" />
-                Operational
+                {isLive ? "Backend reachable" : dataMode === "loading" ? "Checking" : "Offline demo"}
               </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2.5 text-sm">
-            <Row label="Ingest API" value="p99 · 84ms" ok />
-            <Row label="Retrieve API" value="p99 · 142ms" ok />
-            <Row label="Migration engine" value="idle · ready" ok />
-            <Row label="Webhooks" value="2 subscribers" ok />
+            <Row
+              testId="system-ingest"
+              label="Ingest API"
+              value={isLive ? (quickstart.firstEventSent ? "Tested" : "Not tested") : "Unavailable"}
+              ok={isLive && quickstart.firstEventSent}
+            />
+            <Row
+              testId="system-retrieve"
+              label="Retrieve API"
+              value={isLive ? (quickstart.firstRetrieveDone ? "Tested" : "Not tested") : "Unavailable"}
+              ok={isLive && quickstart.firstRetrieveDone}
+            />
+            <Row
+              testId="system-migration"
+              label="Migration engine"
+              value={migrationLabel}
+              ok={isLive && ["completed", "completed_with_warnings"].includes(migration.status)}
+            />
+            <Row label="Webhooks" value={isLive ? "Not exposed" : "Unavailable"} />
           </CardContent>
         </Card>
       </div>
@@ -206,9 +233,9 @@ function OnboardingBanner({ quickstart }: { quickstart: { apiKeyCreated: boolean
   );
 }
 
-function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
+function Row({ label, value, ok, testId }: { label: string; value: string; ok?: boolean; testId?: string }) {
   return (
-    <div className="flex items-center justify-between border-b pb-2.5 last:border-0 last:pb-0">
+    <div data-testid={testId} className="flex items-center justify-between border-b pb-2.5 last:border-0 last:pb-0">
       <span className="text-muted-foreground">{label}</span>
       <span className="flex items-center gap-2">
         <span className="tabular text-xs text-foreground/80">{value}</span>

@@ -139,6 +139,41 @@ else
   COMPOSE=(docker-compose)
 fi
 
+LOCAL_LISTS=()
+CONTAINER_LISTS=()
+RESTORE_WINDOW_OPEN=0
+RESTORE_COMPLETE=0
+
+cleanup_restore_lists() {
+  local path
+  for path in "${LOCAL_LISTS[@]}"; do
+    rm -f -- "$path"
+  done
+  for path in "${CONTAINER_LISTS[@]}"; do
+    MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T postgres \
+      rm -f -- "$path" >/dev/null 2>&1 || true
+  done
+}
+
+recover_failed_restore() {
+  local status=$?
+  trap - EXIT
+  cleanup_restore_lists
+  if [ "$RESTORE_WINDOW_OPEN" -eq 1 ] && [ "$RESTORE_COMPLETE" -ne 1 ]; then
+    set +e
+    "${COMPOSE[@]}" stop "${APP_SERVICES[@]}" >/dev/null 2>&1
+    lock_database_connections "$MP_DB_NAME" "$MP_DB_USER" >/dev/null 2>&1
+    lock_database_connections "$HMS_DB_NAME" "$HMS_DB_USER" >/dev/null 2>&1
+    set -e
+    echo "" >&2
+    echo "✗ restore incomplete; application writers remain stopped and service-role database connections are locked." >&2
+    echo "  Recovery: fix the reported error and rerun this same restore." >&2
+    echo "  Do not restart services or grant CONNECT until every verification passes." >&2
+  fi
+  exit "$status"
+}
+trap recover_failed_restore EXIT
+
 if ! "${COMPOSE[@]}" ps postgres | grep -q "Up\|healthy"; then
   echo "✗ postgres container is not running. Start the stack first: make up" >&2
   exit 1
@@ -153,6 +188,29 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
     echo "✗ cannot read $SRC/$db.dump — backup is corrupt or incompatible" >&2
     exit 2
   fi
+done
+
+# Build both filtered restore lists before confirmation or any destructive SQL.
+# pgvector is a cluster capability and must be created by the administrator;
+# every application-owned archive entry remains in the list.
+for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
+  local_list="$(mktemp "${TMPDIR:-/tmp}/mp-restore-${db}.XXXXXX.list")"
+  container_list="/tmp/mp-restore-${db}-$$.list"
+  LOCAL_LISTS+=("$local_list")
+  CONTAINER_LISTS+=("$container_list")
+  "${COMPOSE[@]}" exec -T postgres pg_restore -l < "$SRC/$db.dump" \
+    | awk '!/ EXTENSION - vector[[:space:]]*$/ && !/ COMMENT - EXTENSION vector[[:space:]]*$/' \
+    > "$local_list"
+  if grep -Eq ' EXTENSION - vector[[:space:]]*$| COMMENT - EXTENSION vector[[:space:]]*$' "$local_list"; then
+    echo "✗ failed to filter pgvector archive entries for $db" >&2
+    exit 1
+  fi
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T postgres tee "$container_list" \
+    < "$local_list" >/dev/null
+  case "$db" in
+    "$MP_DB_NAME") MP_CONTAINER_LIST="$container_list" ;;
+    "$HMS_DB_NAME") HMS_CONTAINER_LIST="$container_list" ;;
+  esac
 done
 
 echo "⚠  DESTRUCTIVE restore from: $SRC"
@@ -178,9 +236,6 @@ if [ "${#APP_SERVICES[@]}" -eq 0 ]; then
   exit 1
 fi
 
-RESTORE_WINDOW_OPEN=0
-RESTORE_COMPLETE=0
-
 lock_database_connections() {
   local db="$1"
   local owner="$2"
@@ -189,24 +244,6 @@ lock_database_connections() {
     -c "REVOKE CONNECT ON DATABASE \"$db\" FROM PUBLIC;" \
     -c "REVOKE CONNECT ON DATABASE \"$db\" FROM \"$owner\";"
 }
-
-recover_failed_restore() {
-  local status=$?
-  trap - EXIT
-  if [ "$RESTORE_WINDOW_OPEN" -eq 1 ] && [ "$RESTORE_COMPLETE" -ne 1 ]; then
-    set +e
-    "${COMPOSE[@]}" stop "${APP_SERVICES[@]}" >/dev/null 2>&1
-    lock_database_connections "$MP_DB_NAME" "$MP_DB_USER" >/dev/null 2>&1
-    lock_database_connections "$HMS_DB_NAME" "$HMS_DB_USER" >/dev/null 2>&1
-    set -e
-    echo "" >&2
-    echo "✗ restore incomplete; application writers remain stopped and service-role database connections are locked." >&2
-    echo "  Recovery: fix the reported error and rerun this same restore." >&2
-    echo "  Do not restart services or grant CONNECT until every verification passes." >&2
-  fi
-  exit "$status"
-}
-trap recover_failed_restore EXIT
 
 echo "  → stopping application services for an exclusive restore window ..."
 RESTORE_WINDOW_OPEN=1
@@ -217,17 +254,28 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
   # The owner is whatever docker/postgres-init.sh set up (mp for memory_passport,
   # hms for hms). Recreate with the matching role so permissions stay correct.
   case "$db" in
-    "$MP_DB_NAME")  owner="$MP_DB_USER" ;;
-    "$HMS_DB_NAME") owner="$HMS_DB_USER" ;;
-    *)              owner="$POSTGRES_USER" ;;
+    "$MP_DB_NAME")
+      owner="$MP_DB_USER"
+      container_list="$MP_CONTAINER_LIST"
+      ;;
+    "$HMS_DB_NAME")
+      owner="$HMS_DB_USER"
+      container_list="$HMS_CONTAINER_LIST"
+      ;;
+    *)
+      owner="$POSTGRES_USER"
+      echo "✗ unexpected database selected for restore: $db" >&2
+      exit 1
+      ;;
   esac
+
   # Drop + recreate so pg_restore starts from a clean slate (avoids the
   # "already exists" errors from restoring into a pre-populated DB). We first
   # force-disconnect any live sessions (e.g. a still-running mp-backend) so the
   # DROP doesn't block on "database is being accessed by other users". Stop the
   # app containers for a cleaner window, but this keeps the script usable when
   # the operator forgot to.
-  "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
     psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
     -c "ALTER DATABASE \"$db\" WITH ALLOW_CONNECTIONS false;" \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid();" \
@@ -239,19 +287,17 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
   lock_database_connections "$db" "$owner"
 
   # Extensions are cluster capabilities, not application-owned schema. Create
-  # pgvector as the privileged backup role before replaying any dependent
-  # types, columns, or indexes from the archive.
+  # pgvector as the privileged backup role before replaying dependent objects.
   "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
     psql -U "$POSTGRES_USER" -d "$db" -v ON_ERROR_STOP=1 \
     -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
-  # Replay as the privileged backup role so pg_restore can restore the
-  # archive's original owners while keeping extension operations privileged.
-  # A single transaction prevents a failed archive from leaving a plausible
-  # but partially restored schema.
-  "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
-    pg_restore -U "$POSTGRES_USER" -d "$db" -v \
-    --exit-on-error --single-transaction \
+  # Restore application objects as the database owner. The filtered list keeps
+  # vector administrator-owned, and the transaction prevents partial schemas.
+  MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+    pg_restore -U "$POSTGRES_USER" -d "$db" -v --exit-on-error \
+    --single-transaction --no-owner --role="$owner" \
+    --use-list="$container_list" \
     < "$SRC/$db.dump"
   echo "    ✓ $db restored"
 done
@@ -285,6 +331,9 @@ BEGIN
     RAISE EXCEPTION 'vector extension missing, versionless, or not owned by $POSTGRES_USER';
   END IF;
 
+  IF (SELECT count(*) FROM alembic_version) <> 1 THEN
+    RAISE EXCEPTION 'Alembic version table must contain exactly one row';
+  END IF;
   SELECT version_num INTO actual_revision FROM alembic_version;
   IF actual_revision IS DISTINCT FROM '$EXPECTED_ALEMBIC_REVISION' THEN
     RAISE EXCEPTION 'Alembic revision mismatch: expected %, restored %',
@@ -293,7 +342,7 @@ BEGIN
 
   FOREACH required_name IN ARRAY ARRAY[
     'tenants', 'memory_records', 'memory_record_hms_units',
-    'retrieval_traces', 'audit_logs'
+    'retrieval_traces', 'audit_logs', 'team_members', 'team_invites'
   ] LOOP
     IF to_regclass('public.' || required_name) IS NULL THEN
       RAISE EXCEPTION 'required MP table missing: %', required_name;
@@ -302,12 +351,23 @@ BEGIN
   FOREACH required_name IN ARRAY ARRAY[
     'ix_memory_records_tenant_id',
     'ix_memory_record_hms_units_hms_unit_id',
-    'ix_audit_logs_tenant_action'
+    'ix_audit_logs_tenant_action',
+    'ix_team_members_tenant_id', 'ix_team_members_tenant_role',
+    'ix_team_invites_tenant_id', 'ix_team_invites_expires_at',
+    'ix_team_invites_tenant_email'
   ] LOOP
     IF to_regclass('public.' || required_name) IS NULL THEN
       RAISE EXCEPTION 'required MP index missing: %', required_name;
     END IF;
   END LOOP;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'retrieval_traces'
+      AND column_name = 'feedback'
+  ) THEN
+    RAISE EXCEPTION 'required retrieval_traces.feedback column missing';
+  END IF;
 
   IF (SELECT pg_get_userbyid(datdba) FROM pg_database
       WHERE datname = '$MP_DB_NAME') IS DISTINCT FROM '$MP_DB_USER' THEN

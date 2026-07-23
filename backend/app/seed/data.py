@@ -16,6 +16,7 @@ Entity counts (the acceptance criteria):
     memory_records   42  (Preferences 12, Relationship 8, Events 9,
                           Boundaries 4, Tasks 6, Archived 3)
     migrations       1   (mig_001, status=preview)
+    team_members     3   (Owner, Admin, Support)
     audit_logs       8
 
 HMS banks (provisioned separately by run_seed): one empty bank per user,
@@ -425,6 +426,42 @@ def migration() -> dict:
     }
 
 
+def team_members() -> list[dict]:
+    """Canonical Luna console team shown in tenant settings."""
+    return [
+        {
+            "id": "tm_1",
+            "tenant_id": TENANT_ID,
+            "name": "Mia Chen",
+            "email": "mia@luna.inc",
+            "role": "Owner",
+            "avatar_color": "#1E3A8A",
+            "joined_at": days_ago(28),
+            "last_active": mins_ago(5),
+        },
+        {
+            "id": "tm_2",
+            "tenant_id": TENANT_ID,
+            "name": "Dev Patel",
+            "email": "dev@luna.inc",
+            "role": "Admin",
+            "avatar_color": "#10b981",
+            "joined_at": days_ago(25),
+            "last_active": hours_ago(2),
+        },
+        {
+            "id": "tm_3",
+            "tenant_id": TENANT_ID,
+            "name": "Sara Kim",
+            "email": "sara@luna.inc",
+            "role": "Support",
+            "avatar_color": "#a855f7",
+            "joined_at": days_ago(20),
+            "last_active": days_ago(1),
+        },
+    ]
+
+
 def audit_logs() -> list[dict]:
     return [
         {"id": "al_1", "tenant_id": TENANT_ID, "actor": "Dev Patel", "action": "memory.created", "target": "mem_029", "detail": "Auto-written from chat event evt_029", "timestamp": days_ago(1)},
@@ -451,5 +488,6 @@ EXPECTED_COUNTS = {
     "auto_write_rules": 6,
     "memory_records": 42,
     "migrations": 1,
+    "team_members": 3,
     "audit_logs": 8,
 }

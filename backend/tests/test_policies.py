@@ -200,6 +200,35 @@ def test_create_then_update_same_pair_persists_every_field(policy_seed, app_clie
         )
 
 
+def test_get_policy_returns_persisted_state_without_writing(policy_seed, app_client):
+    headers = _headers(policy_seed["key"])
+    created = app_client.post("/v1/policies", headers=headers, json=_body())
+    assert created.status_code == 201
+
+    with session_scope() as db:
+        audit_count = db.query(AuditLog).count()
+
+    response = app_client.get(
+        "/v1/policies?app_id=app_policy&agent_id=agt_policy", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == created.json()
+
+    with session_scope() as db:
+        assert db.query(AuditLog).count() == audit_count
+
+
+def test_get_missing_policy_returns_404_without_write(policy_seed, app_client):
+    response = app_client.get(
+        "/v1/policies?app_id=app_policy&agent_id=agt_policy",
+        headers=_headers(policy_seed["key"]),
+    )
+    assert response.status_code == 404
+    with session_scope() as db:
+        assert db.query(MemoryPolicy).count() == 0
+        assert db.query(AuditLog).count() == 0
+
+
 def test_cross_brand_is_rejected_without_any_write(policy_seed, app_client):
     body = _body()
     body["portability"]["cross_brand_app"] = True

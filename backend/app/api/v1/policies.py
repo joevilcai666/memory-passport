@@ -7,9 +7,21 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, TenantDep
 from app.schemas.policies import PolicyResponse, PolicyUpsertRequest
-from app.services.policies import upsert_policy
+from app.services.policies import get_policy, upsert_policy
 
 router = APIRouter(prefix="/v1/policies", tags=["policies"])
+
+
+@router.get("", response_model=PolicyResponse)
+def read_policy(
+    app_id: str,
+    agent_id: str,
+    db: Session = DbDep,
+    tenant=TenantDep,
+) -> PolicyResponse:
+    return PolicyResponse.model_validate(
+        get_policy(db, tenant, app_id=app_id, agent_id=agent_id)
+    )
 
 
 @router.post("", response_model=PolicyResponse)

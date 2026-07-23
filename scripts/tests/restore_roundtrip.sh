@@ -5,6 +5,15 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
 
+ALEMBIC_HEAD_FILE="$(find "$REPO_DIR/backend/alembic/versions" \
+  -type f -name '*.py' | sort | tail -n 1)"
+EXPECTED_ALEMBIC_REVISION="$(sed -nE \
+  's/^revision(:[^=]+)?= *"([^"]+)".*/\2/p' "$ALEMBIC_HEAD_FILE")"
+if [[ ! "$EXPECTED_ALEMBIC_REVISION" =~ ^[a-zA-Z0-9_]+$ ]]; then
+  echo "Could not determine expected Alembic revision" >&2
+  exit 1
+fi
+
 if docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
 elif docker-compose version >/dev/null 2>&1; then
@@ -123,7 +132,7 @@ restored_content="$("${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
 "${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
   psql -U postgres -d memory_passport -At -v ON_ERROR_STOP=1 \
   -c "SELECT 1/CASE WHEN (SELECT count(*) FROM memory_record_hms_units WHERE mp_memory_id = '$memory_id') = 1 THEN 1 ELSE 0 END;" \
-  -c "SELECT 1/CASE WHEN (SELECT version_num FROM alembic_version) = '0009_tenant_hms_credentials' THEN 1 ELSE 0 END;" \
+  -c "SELECT 1/CASE WHEN (SELECT version_num FROM alembic_version) = '$EXPECTED_ALEMBIC_REVISION' THEN 1 ELSE 0 END;" \
   -c "SELECT 1/CASE WHEN (SELECT count(*) FROM audit_logs WHERE target = '$memory_id') >= 1 THEN 1 ELSE 0 END;" \
   -c "SELECT 1/CASE WHEN (SELECT status::text FROM migrations WHERE id = '$migration_id') = '$migration_status' THEN 1 ELSE 0 END;" \
   >/dev/null

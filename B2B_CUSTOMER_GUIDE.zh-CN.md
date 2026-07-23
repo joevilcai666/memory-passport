@@ -54,7 +54,7 @@ python3 --version
 在一个新的目录中执行：
 
 ```bash
-git clone --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --branch main --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 make demo
 ```
@@ -121,8 +121,12 @@ pnpm dev
 ```
 
 然后打开 <http://localhost:3000>。`/console/*` 展示 B 端管理台，
-`/app/*` 展示终端用户的记忆与设备迁移流程。这些页面用于体验产品设计，
-目前显示的是预置前端状态；第 5 节的 API 请求才是后端能力验收。
+`/app/*` 展示终端用户的记忆与设备迁移流程。页面会连接当前运行的 FastAPI
+后端，写操作成功后才更新；后端不可达时只显示只读的预置数据。
+
+浏览器只访问同源 `/api/mp`。`MP_API_URL` 与 `MP_API_KEY` 仅由 Next.js 服务端
+读取，租户密钥不会进入浏览器包或请求头。当前网关尚未实现操作员登录与 RBAC，
+因此生产模式默认关闭；只有可信本地网络可显式启用评估开关。
 
 ## 5. 以客户应用的身份手动写入和召回
 

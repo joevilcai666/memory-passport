@@ -33,6 +33,7 @@ class TenantContext:
 # Matching is prefix-based so /docs/oauth2-redirect and /openapi.json both pass.
 PUBLIC_PATH_PREFIXES = (
     "/v1/health",
+    "/v1/public/team-invites",
     "/docs",
     "/redoc",
     "/openapi.json",

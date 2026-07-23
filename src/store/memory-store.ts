@@ -1,22 +1,16 @@
 "use client";
 
 import { create } from "zustand";
-import { nanoid } from "nanoid";
-import { toast } from "sonner";
-import type {
-  App,
-  AuditAction,
-  AuditLog,
-  Device,
-  MemoryPolicy,
-  MemoryRecord,
-  MemoryStatus,
-  Migration,
-  OldDeviceAccess,
-  Portability,
-  Relationship,
-  User,
-} from "@/lib/types";
+
+import {
+  api,
+  type ApiKeyCreateInput,
+  type AppCreateInput,
+  type DeviceBindInput,
+  type DeviceRegisterInput,
+  type TeamInviteInput,
+  type TraceFeedbackInput,
+} from "@/lib/api-client";
 import {
   agent,
   agents,
@@ -24,8 +18,6 @@ import {
   auditLogs as seedAuditLogs,
   dashboardAlerts,
   devices as seedDevices,
-  deviceV1,
-  deviceV2,
   kpis,
   memoryPolicy as seedPolicy,
   relationship as seedRel,
@@ -37,7 +29,38 @@ import {
   allUsers,
   activitySeries,
 } from "@/lib/mock-data";
-import { api, ApiError } from "@/lib/api-client";
+import type {
+  ApiKey,
+  App,
+  AppCreateResult,
+  AppDetail,
+  AuditLog,
+  DebugTrace,
+  DeleteUserResult,
+  Device,
+  DeviceRegisterResult,
+  DeviceWipeResult,
+  MemoryPolicy,
+  MemoryRecord,
+  MemoryStatus,
+  Migration,
+  OldDeviceAccess,
+  Portability,
+  TeamInviteCreateResult,
+  TeamInvite,
+  User,
+} from "@/lib/types";
+
+export type DataMode = "loading" | "live" | "offline-demo";
+
+export class BackendUnavailableError extends Error {
+  readonly code = "backend_unavailable";
+
+  constructor() {
+    super("The backend is unavailable; demo data is read-only.");
+    this.name = "BackendUnavailableError";
+  }
+}
 
 interface QuickstartState {
   apiKeyCreated: boolean;
@@ -46,62 +69,84 @@ interface QuickstartState {
   firstRetrieveDone: boolean;
 }
 
+interface ExportResult {
+  export_id: string;
+  blob: Blob;
+}
+
 interface MemoryStore {
-  // entities (seeded from mock-data; memories/audit/usage hydrate from backend)
   tenant: typeof tenant;
   app: App;
   agents: typeof agents;
   users: User[];
   currentUser: User;
   devices: Device[];
-  relationship: Relationship;
+  relationship: typeof seedRel;
   memories: MemoryRecord[];
   policy: MemoryPolicy;
   migration: Migration;
   team: typeof teamMembers;
+  pendingInvites: TeamInvite[];
   auditLogs: AuditLog[];
   alerts: typeof dashboardAlerts;
   kpis: typeof kpis;
   activity: typeof activitySeries;
   quickstart: QuickstartState;
+  lastTraceId: string | null;
+  lastTrace: DebugTrace | null;
 
-  // backend sync state
   hydrated: boolean;
   backendReachable: boolean;
-  memoryMutationPending: boolean;
-  memoryMutationError: string | null;
+  dataMode: DataMode;
   hydrate: () => Promise<void>;
 
-  // ui prefs
   environment: "sandbox" | "production";
-  setEnvironment: (e: "sandbox" | "production") => void;
+  setEnvironment: (environment: "sandbox" | "production") => void;
 
-  // mutations
-  toggleMemoryEnabled: () => void;
-  togglePortabilityAxis: (axis: keyof Portability) => void;
-  setMaxMemoriesPerResponse: (n: number) => void;
-  toggleSensitiveInPrompt: () => void;
+  setMemoryEnabled: (enabled: boolean) => Promise<User>;
+  toggleMemoryEnabled: () => Promise<User>;
+  togglePortabilityAxis: (axis: keyof Portability) => Promise<MemoryPolicy>;
+  setMaxMemoriesPerResponse: (value: number) => Promise<MemoryPolicy>;
+  toggleSensitiveInPrompt: () => Promise<MemoryPolicy>;
 
-  editMemory: (id: string, content: string) => Promise<MemoryRecord | null>;
-  setMemoryStatus: (id: string, status: MemoryStatus) => void;
-  deleteMemory: (id: string) => void;
-  addMemory: (content: string, type: MemoryRecord["type"]) => void;
+  editMemory: (id: string, content: string) => Promise<MemoryRecord>;
+  setMemoryStatus: (id: string, status: MemoryStatus) => Promise<MemoryRecord>;
+  deleteMemory: (id: string) => Promise<MemoryRecord>;
+  addMemory: (
+    content: string,
+    type: MemoryRecord["type"],
+  ) => Promise<{ event_id: string; results: { id: string; action: string }[] }>;
 
-  // quickstart actions
-  runTestEvent: () => void;
-  runRetrieveTest: () => void;
-  createTestUser: () => void;
+  runTestEvent: () => Promise<{
+    event_id: string;
+    results: { id: string; action: string }[];
+  } | null>;
+  runRetrieveTest: () => Promise<{
+    trace_id: string;
+    results: unknown[];
+  } | null>;
+  createTestUser: () => Promise<User>;
 
-  // migration
   selectMigrationMemory: (id: string, selected: boolean) => void;
-  setOldDeviceAccess: (a: OldDeviceAccess) => void;
-  executeMigration: () => void;
+  setOldDeviceAccess: (access: OldDeviceAccess) => void;
+  executeMigration: () => Promise<Migration>;
   resetMigration: () => void;
+  deleteAllMemories: () => Promise<DeleteUserResult>;
 
-  // delete all
-  deleteAllMemories: () => void;
+  createApp: (input: AppCreateInput) => Promise<AppCreateResult>;
+  createApiKey: (appId: string, input: ApiKeyCreateInput) => Promise<ApiKey>;
+  rotateApiKey: (appId: string, keyId: string) => Promise<ApiKey>;
+  inviteTeamMember: (input: TeamInviteInput) => Promise<TeamInviteCreateResult>;
+  recordTraceFeedback: (
+    traceId: string,
+    input: TraceFeedbackInput,
+  ) => Promise<DebugTrace>;
+  registerDevice: (input: DeviceRegisterInput) => Promise<DeviceRegisterResult>;
+  bindDevice: (input: DeviceBindInput) => Promise<Device>;
+  unbindDevice: (deviceId: string) => Promise<Device>;
+  wipeDevice: (deviceId: string) => Promise<DeviceWipeResult>;
+  exportMemories: () => Promise<ExportResult>;
 
-  // helpers
   getMemory: (id: string) => MemoryRecord | undefined;
   memoriesByType: () => Record<string, MemoryRecord[]>;
 }
@@ -113,45 +158,52 @@ const initialQuickstart: QuickstartState = {
   firstRetrieveDone: false,
 };
 
-function pushAudit(
-  list: AuditLog[],
-  actor: string,
-  action: AuditAction,
-  target: string,
-  detail: string,
-): AuditLog[] {
-  return [
-    {
-      id: nanoid(10),
-      tenant_id: tenant.id,
-      actor,
-      action,
-      target,
-      detail,
-      timestamp: new Date().toISOString(),
-    },
-    ...list,
-  ];
-}
-
-/** True when the backend is reachable AND the working context is sandbox. */
-function canCallBackend(state: MemoryStore): boolean {
-  return state.backendReachable;
-}
-
-/**
- * Run an API mutation; on failure, surface a toast but never throw — the UI
- * already applied the optimistic update, and for a demo/PoC audience a soft
- * "saved locally, backend sync failed" is preferable to a half-broken screen.
- */
-async function syncOrToast<T>(fn: () => Promise<T>, label: string): Promise<T | undefined> {
-  try {
-    return await fn();
-  } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err);
-    toast.error(`Backend sync failed · ${label}`, { description: msg.slice(0, 180) });
-    return undefined;
+function requireLive(state: MemoryStore): void {
+  if (state.dataMode !== "live" || !state.backendReachable) {
+    throw new BackendUnavailableError();
   }
+}
+
+function appDetailToApp(detail: AppDetail): App {
+  return {
+    ...detail,
+    api_keys: detail.api_keys.map((key) => ({
+      ...key,
+      key: key.masked_key,
+    })),
+  };
+}
+
+function maskApiKey(secret: string): string {
+  if (secret.includes("••••")) return secret;
+  const [prefix, environment] = secret.split("_", 3);
+  if (!prefix || !environment || secret.length < 4) return "••••";
+  return `${prefix}_${environment}_••••${secret.slice(-4)}`;
+}
+
+function maskedApiKey(key: ApiKey): ApiKey {
+  return { ...key, key: maskApiKey(key.key) };
+}
+
+function replaceMemory(
+  list: MemoryRecord[],
+  replacement: MemoryRecord,
+  replacedId = replacement.id,
+): MemoryRecord[] {
+  return list.map((memory) =>
+    memory.id === replacedId ? replacement : memory,
+  );
+}
+
+function replaceDevice(list: Device[], replacement: Device): Device[] {
+  const exists = list.some((device) => device.id === replacement.id);
+  return exists
+    ? list.map((device) => (device.id === replacement.id ? replacement : device))
+    : [...list, replacement];
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export const useMemoryStore = create<MemoryStore>((set, get) => ({
@@ -166,478 +218,503 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
   policy: seedPolicy,
   migration: seedMigration,
   team: teamMembers,
+  pendingInvites: [],
   auditLogs: seedAuditLogs,
   alerts: dashboardAlerts,
   kpis,
   activity: activitySeries,
   quickstart: initialQuickstart,
+  lastTraceId: null,
+  lastTrace: null,
 
   hydrated: false,
   backendReachable: false,
-  memoryMutationPending: false,
-  memoryMutationError: null,
+  dataMode: "loading",
 
-  // ---- hydration ---------------------------------------------------------
-  /**
-   * Fetch the live dataset from the backend and overwrite the corresponding
-   * seed slices. Entities the backend does not expose as GET lists (apps,
-   * users, agents, devices, relationships, policy) stay on their mock seed —
-   * they are configuration-shaped display data. Memories / audit / usage are
-   * the real per-customer data and hydrate fully.
-   *
-   * On any failure (backend down, auth rejected) we keep the seed and mark
-   * backendReachable=false so the UI can show an "offline · demo data" hint.
-   */
   hydrate: async () => {
     if (get().hydrated) return;
-    const reachable = await api.ping();
+    let reachable = false;
+    try {
+      reachable = await api.ping();
+    } catch {
+      reachable = false;
+    }
     if (!reachable) {
-      set({ hydrated: true, backendReachable: false });
+      set({
+        hydrated: true,
+        backendReachable: false,
+        dataMode: "offline-demo",
+      });
       return;
     }
-    const [memoriesR, auditR, usageR] = await Promise.allSettled([
-      api.getMemories(),
-      api.getAuditLogs(),
-      api.getUsage(),
-    ]);
-    set((s) => {
+
+    let memories: MemoryRecord[];
+    try {
+      memories = await api.getMemories();
+    } catch {
+      set({
+        hydrated: true,
+        backendReachable: false,
+        dataMode: "offline-demo",
+      });
+      return;
+    }
+
+    const [appsResult, auditResult, usageResult, policyResult, migrationResult, teamResult] =
+      await Promise.allSettled([
+        api.getApps(),
+        api.getAuditLogs(),
+        api.getUsage(),
+        api.getPolicy(seedApp.id, agent.id),
+        api.getMigration(seedMigration.id),
+        api.getTeam(),
+      ]);
+
+    set((state) => {
       const next: Partial<MemoryStore> = {
         hydrated: true,
-        // Health is intentionally public. The authenticated memories read is
-        // the authoritative connectivity check for this tenant.
-        backendReachable: memoriesR.status === "fulfilled",
+        // The authenticated memory read, not the public health response,
+        // authorizes this tenant to enter writable live mode.
+        backendReachable: true,
+        dataMode: "live",
+        memories,
       };
-      if (memoriesR.status === "fulfilled") {
-        next.memories = memoriesR.value;
-        if (memoriesR.value.length > 0) {
-          // the quickstart "sent first event" step is satisfied if any memory exists
-          next.quickstart = { ...s.quickstart, firstEventSent: true, testUserCreated: true };
-        }
-      }
-      if (auditR.status === "fulfilled" && auditR.value.length > 0) {
-        next.auditLogs = auditR.value;
-      }
-      if (usageR.status === "fulfilled") {
-        const u = usageR.value;
-        // The Overview KPIs are shaped as headline numbers. Map the backend
-        // usage bundle onto the two fields that have a real correspondence;
-        // leave the rate-style KPIs on their seeded demo values.
-        next.kpis = {
-          ...s.kpis,
-          memoryMau: u.memory_mau,
-          memoryOps: u.ops.ingest + u.ops.retrieve + u.ops.update + u.ops.delete,
+      if (memories.length > 0) {
+        next.quickstart = {
+          ...state.quickstart,
+          firstEventSent: true,
+          testUserCreated: true,
         };
+      }
+      if (appsResult.status === "fulfilled" && appsResult.value.length > 0) {
+        next.app = appDetailToApp(appsResult.value[0]);
+      }
+      if (auditResult.status === "fulfilled") {
+        next.auditLogs = auditResult.value;
+      }
+      if (usageResult.status === "fulfilled") {
+        const usage = usageResult.value;
+        next.kpis = {
+          ...state.kpis,
+          memoryMau: usage.memory_mau,
+          memoryOps:
+            usage.ops.ingest +
+            usage.ops.retrieve +
+            usage.ops.update +
+            usage.ops.delete,
+        };
+      }
+      if (policyResult.status === "fulfilled" && policyResult.value) {
+        next.policy = policyResult.value;
+      }
+      if (migrationResult.status === "fulfilled" && migrationResult.value) {
+        next.migration = migrationResult.value;
+      }
+      if (teamResult.status === "fulfilled") {
+        next.team = teamResult.value.members;
+        next.pendingInvites = teamResult.value.pending_invites;
       }
       return next;
     });
   },
 
   environment: "sandbox",
-  setEnvironment: (e) => set({ environment: e }),
+  setEnvironment: (environment) => set({ environment }),
 
-  toggleMemoryEnabled: () =>
-    set((s) => {
-      const next = !s.currentUser.memory_enabled;
-      return {
-        currentUser: { ...s.currentUser, memory_enabled: next },
-        auditLogs: pushAudit(
-          s.auditLogs,
-          "Mia Chen",
-          "policy.changed",
-          s.currentUser.id,
-          next ? "Memory turned ON" : "Memory paused by user",
-        ),
-      };
-    }),
+  setMemoryEnabled: async (enabled) => {
+    const state = get();
+    requireLive(state);
+    if (state.currentUser.memory_enabled === enabled) return state.currentUser;
+    const updated = await api.setUserConsent(state.currentUser.id, enabled);
+    set((current) => ({
+      currentUser: updated,
+      users: current.users.map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      ),
+    }));
+    return updated;
+  },
 
-  togglePortabilityAxis: (axis) =>
-    set((s) => {
-      const current = s.policy.portability[axis];
-      // cross_brand_app stays off in V0.1 (architecture ready, narrative deferred)
-      if (axis === "cross_brand_app" && !current) return {};
-      const portability = { ...s.policy.portability, [axis]: !current };
-      const policy = { ...s.policy, portability };
-      // Push the whole policy upsert; the backend has no delta endpoint.
-      if (canCallBackend(s)) {
-        void syncOrToast(
-          () =>
-            api.upsertPolicy({
-              app_id: policy.app_id,
-              agent_id: policy.agent_id,
-              portability,
-              retrieval: policy.retrieval,
-            }),
-          "policy upsert",
-        );
-      }
-      return {
-        policy,
-        auditLogs: pushAudit(
-          s.auditLogs,
-          "Mia Chen",
-          "policy.changed",
-          s.policy.id,
-          `Portability ${axis} → ${!current ? "ON" : "OFF"}`,
-        ),
-      };
-    }),
+  toggleMemoryEnabled: async () =>
+    get().setMemoryEnabled(!get().currentUser.memory_enabled),
 
-  setMaxMemoriesPerResponse: (n) =>
-    set((s) => {
-      const policy = {
-        ...s.policy,
-        retrieval: { ...s.policy.retrieval, max_memories_per_response: n },
-      };
-      if (canCallBackend(s)) {
-        void syncOrToast(
-          () =>
-            api.upsertPolicy({
-              app_id: policy.app_id,
-              agent_id: policy.agent_id,
-              portability: policy.portability,
-              retrieval: policy.retrieval,
-            }),
-          "policy upsert",
-        );
-      }
-      return { policy };
-    }),
+  togglePortabilityAxis: async (axis) => {
+    const state = get();
+    requireLive(state);
+    if (axis === "layer") {
+      throw new Error("portability layer cannot be toggled as a boolean axis");
+    }
+    if (axis === "cross_brand_app" && !state.policy.portability.cross_brand_app) {
+      return state.policy;
+    }
+    const portability = {
+      ...state.policy.portability,
+      [axis]: !state.policy.portability[axis],
+    };
+    const updated = await api.upsertPolicy({
+      app_id: state.policy.app_id,
+      agent_id: state.policy.agent_id,
+      portability,
+      retrieval: state.policy.retrieval,
+    });
+    set({ policy: updated });
+    return updated;
+  },
 
-  toggleSensitiveInPrompt: () =>
-    set((s) => {
-      const policy = {
-        ...s.policy,
-        retrieval: {
-          ...s.policy.retrieval,
-          include_sensitive_in_prompt: !s.policy.retrieval.include_sensitive_in_prompt,
-        },
-      };
-      if (canCallBackend(s)) {
-        void syncOrToast(
-          () =>
-            api.upsertPolicy({
-              app_id: policy.app_id,
-              agent_id: policy.agent_id,
-              portability: policy.portability,
-              retrieval: policy.retrieval,
-            }),
-          "policy upsert",
-        );
-      }
-      return { policy };
-    }),
+  setMaxMemoriesPerResponse: async (value) => {
+    const state = get();
+    requireLive(state);
+    const updated = await api.upsertPolicy({
+      app_id: state.policy.app_id,
+      agent_id: state.policy.agent_id,
+      portability: state.policy.portability,
+      retrieval: {
+        ...state.policy.retrieval,
+        max_memories_per_response: value,
+      },
+    });
+    set({ policy: updated });
+    return updated;
+  },
+
+  toggleSensitiveInPrompt: async () => {
+    const state = get();
+    requireLive(state);
+    const updated = await api.upsertPolicy({
+      app_id: state.policy.app_id,
+      agent_id: state.policy.agent_id,
+      portability: state.policy.portability,
+      retrieval: {
+        ...state.policy.retrieval,
+        include_sensitive_in_prompt:
+          !state.policy.retrieval.include_sensitive_in_prompt,
+      },
+    });
+    set({ policy: updated });
+    return updated;
+  },
 
   editMemory: async (id, content) => {
-    if (!canCallBackend(get())) {
-      set({
-        memoryMutationError:
-          "Memory Passport is unavailable. Your edit was not saved.",
-      });
-      return null;
-    }
-    set({ memoryMutationPending: true, memoryMutationError: null });
+    requireLive(get());
+    const updated = await api.patchMemory(id, { content });
+    set((state) => ({ memories: replaceMemory(state.memories, updated, id) }));
+    return updated;
+  },
+
+  setMemoryStatus: async (id, status) => {
+    requireLive(get());
+    const updated = await api.patchMemory(id, { status });
+    set((state) => ({ memories: replaceMemory(state.memories, updated) }));
+    return updated;
+  },
+
+  deleteMemory: async (id) => {
+    requireLive(get());
+    const updated = await api.deleteMemory(id);
+    set((state) => ({ memories: state.memories.filter((memory) => memory.id !== id) }));
+    return updated;
+  },
+
+  addMemory: async (content) => {
+    const state = get();
+    requireLive(state);
+    const outcome = await api.ingestEvent({
+      user_id: state.currentUser.id,
+      agent_id: agent.id,
+      relationship_id: state.relationship.id,
+      source_type: "explicit_instruction",
+      content,
+      quote: content,
+    });
+    const memories = await api.getMemories(state.currentUser.id);
+    set({ memories });
+    return outcome;
+  },
+
+  createTestUser: async () => {
+    const state = get();
+    requireLive(state);
+    if (state.quickstart.testUserCreated) return state.currentUser;
+    const created = await api.createUser({
+      app_id: state.app.id,
+      external_user_id: state.currentUser.external_user_id,
+      age_group: state.currentUser.age_group,
+      region: state.currentUser.region,
+      display_name: state.currentUser.display_name,
+    });
+    set((current) => ({
+      currentUser: created,
+      users: current.users.some((candidate) => candidate.id === created.id)
+        ? current.users.map((candidate) =>
+            candidate.id === created.id ? created : candidate,
+          )
+        : [...current.users, created],
+      quickstart: { ...current.quickstart, testUserCreated: true },
+    }));
+    return created;
+  },
+
+  runTestEvent: async () => {
+    const state = get();
+    requireLive(state);
+    if (state.quickstart.firstEventSent) return null;
+    const outcome = await api.ingestEvent({
+      user_id: state.currentUser.id,
+      agent_id: agent.id,
+      relationship_id: state.relationship.id,
+      source_type: "explicit_instruction",
+      content: "I like test events to confirm the integration works.",
+    });
+    const memories = await api.getMemories(state.currentUser.id);
+    set((current) => ({
+      memories,
+      quickstart: {
+        ...current.quickstart,
+        firstEventSent: true,
+        testUserCreated: true,
+      },
+    }));
+    return outcome;
+  },
+
+  runRetrieveTest: async () => {
+    const state = get();
+    requireLive(state);
+    if (state.quickstart.firstRetrieveDone) return null;
+    const outcome = await api.retrieveMemories({
+      user_id: state.currentUser.id,
+      agent_id: agent.id,
+      relationship_id: state.relationship.id,
+      query: "What should Luna remember about me?",
+      model: "quickstart-test",
+    });
+    let trace: DebugTrace | null = null;
     try {
-      const saved = await api.patchMemory(id, { content });
-      set((s) => ({
-        memories: s.memories.map((memory) =>
-          memory.id === id ? saved : memory,
-        ),
-      }));
-      return saved;
-    } catch (error) {
-      const message =
-        error instanceof ApiError
-          ? error.message
-          : "Memory Passport rejected the edit";
-      set({ memoryMutationError: `${message}. Your edit was not saved.` });
-      return null;
-    } finally {
-      set({ memoryMutationPending: false });
+      trace = await api.getTrace(outcome.trace_id);
+    } catch {
+      // Retrieval succeeded even when the optional debug-trace read is unavailable.
     }
-  },
-
-  setMemoryStatus: (id, status) => {
-    set((s) => ({
-      memories: s.memories.map((m) => (m.id === id ? { ...m, status } : m)),
-      auditLogs: pushAudit(s.auditLogs, "Sara Kim", "memory.edited", id, `Status → ${status}`),
+    set((current) => ({
+      quickstart: { ...current.quickstart, firstRetrieveDone: true },
+      lastTraceId: outcome.trace_id,
+      lastTrace: trace,
     }));
-    if (canCallBackend(get())) {
-      void syncOrToast(() => api.patchMemory(id, { status }), `memory ${id}`);
-    }
+    return outcome;
   },
-
-  deleteMemory: (id) => {
-    set((s) => ({
-      memories: s.memories.map((m) =>
-        m.id === id ? { ...m, status: "deleted" as MemoryStatus } : m,
-      ),
-      auditLogs: pushAudit(
-        s.auditLogs,
-        "Mia Chen",
-        "memory.deleted",
-        id,
-        "Deleted via Memory Center (tombstone)",
-      ),
-    }));
-    if (canCallBackend(get())) {
-      void syncOrToast(() => api.deleteMemory(id), `delete ${id}`);
-    }
-  },
-
-  addMemory: (content, type) =>
-    set((s) => {
-      const id = `mem_${nanoid(6)}`;
-      const ts = new Date().toISOString();
-      const newMem: MemoryRecord = {
-        id,
-        tenant_id: tenant.id,
-        app_id: s.app.id,
-        passport_id: s.currentUser.passport_id,
-        user_id: s.currentUser.id,
-        relationship_id: s.relationship.id,
-        agent_id: agent.id,
-        device_id: null,
-        type,
-        content,
-        scope: "relationship_only",
-        sensitivity: "S1",
-        status: "active",
-        confidence: 0.9,
-        portability: s.policy.portability,
-        source: {
-          event_id: `evt_${nanoid(6)}`,
-          source_type: "explicit_instruction",
-          timestamp: ts,
-          quote: content,
-        },
-        valid_from: ts,
-        expires_at: null,
-        version: 1,
-        supersedes: null,
-        last_used_at: null,
-        usage_count: 0,
-        model_provenance: { created_by_model: "gpt-4o", retrieval_history: [] },
-      };
-      // Ingest through the backend pipeline so HMS retain runs; fall back to
-      // local-only insert when offline so the UI still shows the new memory.
-      if (canCallBackend(s)) {
-        void syncOrToast(
-          () =>
-            api.ingestEvent({
-              user_id: s.currentUser.id,
-              agent_id: agent.id,
-              relationship_id: s.relationship.id,
-              source_type: "explicit_instruction",
-              content,
-              quote: content,
-            }),
-          "ingest memory",
-        ).then((res) => {
-          if (res && res.results.length > 0) {
-            // Replace the optimistic id with the backend id on the matching row.
-            const createdId = res.results[0].id;
-            set((cur) => ({
-              memories: cur.memories.map((m) => (m.id === id ? { ...m, id: createdId } : m)),
-            }));
-          }
-        });
-      }
-      return {
-        memories: [newMem, ...s.memories],
-        auditLogs: pushAudit(s.auditLogs, "Mia Chen", "memory.created", id, `Auto-written: "${content.slice(0, 40)}…"`),
-      };
-    }),
-
-  runTestEvent: () =>
-    set((s) => {
-      if (s.quickstart.firstEventSent) return {};
-      const id = "mem_quickstart";
-      const ts = new Date().toISOString();
-      const newMem: MemoryRecord = {
-        id,
-        tenant_id: tenant.id,
-        app_id: s.app.id,
-        passport_id: s.currentUser.passport_id,
-        user_id: s.currentUser.id,
-        relationship_id: s.relationship.id,
-        agent_id: agent.id,
-        device_id: null,
-        type: "preference",
-        content: "You like test events to confirm the integration works.",
-        scope: "relationship_only",
-        sensitivity: "S1",
-        status: "active",
-        confidence: 0.99,
-        portability: s.policy.portability,
-        source: { event_id: `evt_${nanoid(6)}`, source_type: "explicit_instruction", timestamp: ts, quote: "I like test events to confirm the integration works." },
-        valid_from: ts,
-        expires_at: null,
-        version: 1,
-        supersedes: null,
-        last_used_at: null,
-        usage_count: 0,
-        model_provenance: { created_by_model: "gpt-4o", retrieval_history: [] },
-      };
-      // Fire the real ingest so the customer sees their backend receive it.
-      if (canCallBackend(s)) {
-        void syncOrToast(
-          () =>
-            api.ingestEvent({
-              user_id: s.currentUser.id,
-              agent_id: agent.id,
-              relationship_id: s.relationship.id,
-              source_type: "explicit_instruction",
-              content: "I like test events to confirm the integration works.",
-            }),
-          "test event",
-        );
-      }
-      return {
-        memories: [newMem, ...s.memories.filter((m) => m.id !== id)],
-        quickstart: { ...s.quickstart, firstEventSent: true, testUserCreated: true },
-        auditLogs: pushAudit(s.auditLogs, "SDK", "memory.created", id, "Ingest test event received"),
-      };
-    }),
-
-  runRetrieveTest: () =>
-    set((s) =>
-      s.quickstart.firstRetrieveDone
-        ? {}
-        : {
-            quickstart: { ...s.quickstart, firstRetrieveDone: true },
-            auditLogs: pushAudit(s.auditLogs, "SDK", "memory.viewed", "retrieve-test", "Retrieve test succeeded (3 memories returned)"),
-          },
-    ),
-
-  createTestUser: () =>
-    set((s) =>
-      s.quickstart.testUserCreated
-        ? {}
-        : { quickstart: { ...s.quickstart, testUserCreated: true } },
-    ),
 
   selectMigrationMemory: (id, selected) =>
-    set((s) => {
-      const m = s.migration;
-      const isInSelected = m.selected_memory_ids.includes(id);
-      if (selected && !isInSelected) {
+    set((state) => {
+      const migration = state.migration;
+      const alreadySelected = migration.selected_memory_ids.includes(id);
+      if (selected && !alreadySelected) {
         return {
           migration: {
-            ...m,
-            selected_memory_ids: [...m.selected_memory_ids, id],
-            skipped_memory_ids: m.skipped_memory_ids.filter((x) => x !== id),
+            ...migration,
+            selected_memory_ids: [...migration.selected_memory_ids, id],
+            skipped_memory_ids: migration.skipped_memory_ids.filter(
+              (candidate) => candidate !== id,
+            ),
           },
         };
       }
-      if (!selected && isInSelected) {
+      if (!selected && alreadySelected) {
         return {
           migration: {
-            ...m,
-            selected_memory_ids: m.selected_memory_ids.filter((x) => x !== id),
+            ...migration,
+            selected_memory_ids: migration.selected_memory_ids.filter(
+              (candidate) => candidate !== id,
+            ),
           },
         };
       }
       return {};
     }),
 
-  setOldDeviceAccess: (a) =>
-    set((s) => ({ migration: { ...s.migration, old_device_access: a } })),
+  setOldDeviceAccess: (access) =>
+    set((state) => ({
+      migration: { ...state.migration, old_device_access: access },
+    })),
 
-  executeMigration: () => {
-    const s = get();
-    const movedIds = s.migration.selected_memory_ids;
-    set((s2) => ({
-      migration: {
-        ...s2.migration,
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      },
-      devices: s2.devices.map((d) => {
-        if (d.id === deviceV2.id) {
-          return { ...d, status: "bound", bound_user_id: s2.currentUser.id, last_seen_at: new Date().toISOString() };
-        }
-        if (d.id === deviceV1.id && s2.migration.old_device_access === "remove") {
-          return { ...d, status: "unbound", bound_user_id: null };
-        }
-        return d;
-      }),
-      // re-link moved memories' device_id to v2 where they were device-scoped but portable
-      memories: s2.memories.map((m) =>
-        movedIds.includes(m.id) && m.portability.layer === "portable"
-          ? { ...m, device_id: deviceV2.id }
-          : m,
-      ),
-      auditLogs: pushAudit(
-        s2.auditLogs,
-        "Mia Chen",
-        "migration.completed",
-        s2.migration.id,
-        `Moved ${movedIds.length} memories from ${deviceV1.generation} to ${deviceV2.generation}`,
-      ),
-    }));
-    // Push the migration through preview→execute on the backend. The seed
-    // migration's source/target ids are mock ids; if they don't resolve on the
-    // backend the call 404s and syncOrToast surfaces a soft warning — the
-    // optimistic UI change above already stands.
-    if (canCallBackend(s) && movedIds.length > 0) {
-      void syncOrToast(
-        () =>
-          api.previewMigration({
-            user_id: s.currentUser.id,
-            source_relationship_id: s.migration.source_relationship_id,
-            target_relationship_id: s.migration.target_relationship_id,
-            source_device_id: s.migration.source_device_id,
-            target_device_id: s.migration.target_device_id,
-          }).then((preview) =>
-            api.executeMigration({
-              migration_id: preview.migration_id,
-              selected_memory_ids: movedIds,
-              old_device_access: s.migration.old_device_access,
-            }),
-          ),
-        "migration execute",
-      );
-    }
+  executeMigration: async () => {
+    const state = get();
+    requireLive(state);
+    const preview = await api.previewMigration({
+      user_id: state.currentUser.id,
+      source_relationship_id: state.migration.source_relationship_id,
+      target_relationship_id: state.migration.target_relationship_id,
+      source_device_id: state.migration.source_device_id,
+      target_device_id: state.migration.target_device_id,
+    });
+    const completed = await api.executeMigration({
+      migration_id: preview.migration_id,
+      selected_memory_ids: state.migration.selected_memory_ids,
+      old_device_access: state.migration.old_device_access,
+    });
+    set({ migration: completed });
+    return completed;
   },
 
   resetMigration: () =>
-    set(() => ({
+    set((state) => ({
       migration: {
-        ...seedMigration,
+        ...state.migration,
+        status: "draft",
         selected_memory_ids: [],
         skipped_memory_ids: [],
+        failed_memory_ids: [],
+        completed_at: null,
+        rolled_back_at: null,
       },
     })),
 
-  deleteAllMemories: () => {
-    const s = get();
-    set((cur) => ({
-      memories: cur.memories.map((m) => ({ ...m, status: "deleted" as MemoryStatus })),
-      auditLogs: pushAudit(
-        cur.auditLogs,
-        "Mia Chen",
-        "memory.deleted",
-        cur.currentUser.id,
-        "Deleted ALL memories (tombstone) — user-initiated",
+  deleteAllMemories: async () => {
+    const state = get();
+    requireLive(state);
+    const result = await api.deleteUser(state.currentUser.id);
+    set((current) => ({
+      memories: [],
+      currentUser: {
+        ...current.currentUser,
+        memory_enabled: false,
+        passport_status: result.passport_status,
+      },
+      users: current.users.map((candidate) =>
+        candidate.id === result.user_id
+          ? {
+              ...candidate,
+              memory_enabled: false,
+              passport_status: result.passport_status,
+            }
+          : candidate,
       ),
     }));
-    // Cascade delete each backend memory tombstone-by-tombstone. This is O(n)
-    // but correct; n is small for a PoC and the backend delete is idempotent
-    // against re-invocation on an already-tombstoned row.
-    if (canCallBackend(s)) {
-      for (const m of s.memories) {
-        void syncOrToast(() => api.deleteMemory(m.id), `delete ${m.id}`);
-      }
+    return result;
+  },
+
+  createApp: async (input) => {
+    requireLive(get());
+    const result = await api.createApp(input);
+    set((state) => ({
+      app: { ...result.app, api_keys: [maskedApiKey(result.api_key)] },
+      environment: input.environment,
+      quickstart: { ...state.quickstart, apiKeyCreated: true },
+    }));
+    return result;
+  },
+
+  createApiKey: async (appId, input) => {
+    requireLive(get());
+    const created = await api.createApiKey(appId, input);
+    set((state) => ({
+      app:
+        state.app.id === appId
+          ? { ...state.app, api_keys: [...state.app.api_keys, maskedApiKey(created)] }
+          : state.app,
+    }));
+    return created;
+  },
+
+  rotateApiKey: async (appId, keyId) => {
+    requireLive(get());
+    const replacement = await api.rotateApiKey(appId, keyId);
+    set((state) => ({
+      app:
+        state.app.id === appId
+          ? {
+              ...state.app,
+              api_keys: [
+                ...state.app.api_keys.filter((key) => key.id !== keyId),
+                maskedApiKey(replacement),
+              ],
+            }
+          : state.app,
+    }));
+    return replacement;
+  },
+
+  inviteTeamMember: async (input) => {
+    requireLive(get());
+    const result = await api.inviteTeamMember(input);
+    set((state) => ({
+      pendingInvites: state.pendingInvites.some(
+        (invite) => invite.id === result.invite.id,
+      )
+        ? state.pendingInvites
+        : [...state.pendingInvites, result.invite],
+    }));
+    try {
+      const team = await api.getTeam();
+      set({ team: team.members, pendingInvites: team.pending_invites });
+    } catch {
+      // The invite already exists and its one-time token must still be returned.
     }
+    return result;
   },
 
-  getMemory: (id) => get().memories.find((m) => m.id === id),
-
-  memoriesByType: () => {
-    const list = get().memories;
-    return list.reduce<Record<string, MemoryRecord[]>>((acc, m) => {
-      (acc[m.type] = acc[m.type] || []).push(m);
-      return acc;
-    }, {});
+  recordTraceFeedback: async (traceId, input) => {
+    requireLive(get());
+    const trace = await api.recordTraceFeedback(traceId, input);
+    set((state) => ({
+      lastTrace: state.lastTraceId === traceId ? trace : state.lastTrace,
+    }));
+    return trace;
   },
+
+  registerDevice: async (input) => {
+    requireLive(get());
+    const result = await api.registerDevice(input);
+    set((state) => ({
+      devices: replaceDevice(state.devices, result.device),
+    }));
+    return result;
+  },
+
+  bindDevice: async (input) => {
+    requireLive(get());
+    const result = await api.bindDevice(input);
+    set((state) => ({ devices: replaceDevice(state.devices, result) }));
+    return result;
+  },
+
+  unbindDevice: async (deviceId) => {
+    requireLive(get());
+    const result = await api.unbindDevice(deviceId);
+    set((state) => ({ devices: replaceDevice(state.devices, result) }));
+    return result;
+  },
+
+  wipeDevice: async (deviceId) => {
+    requireLive(get());
+    const result = await api.wipeDevice(deviceId);
+    set((state) => ({
+      devices: replaceDevice(state.devices, result.device),
+    }));
+    return result;
+  },
+
+  exportMemories: async () => {
+    const state = get();
+    requireLive(state);
+    const created = await api.createExport(state.currentUser.id);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const status = await api.getExportStatus(created.export_id);
+      if (status.status === "completed") {
+        const blob = await api.downloadExport(status.download_url);
+        return { export_id: created.export_id, blob };
+      }
+      if (status.status === "failed") {
+        throw new Error(status.error ?? "export failed");
+      }
+      await delay(250);
+    }
+    throw new Error("export did not complete before the polling deadline");
+  },
+
+  getMemory: (id) => get().memories.find((memory) => memory.id === id),
+
+  memoriesByType: () =>
+    get().memories.reduce<Record<string, MemoryRecord[]>>((groups, memory) => {
+      (groups[memory.type] = groups[memory.type] ?? []).push(memory);
+      return groups;
+    }, {}),
 }));

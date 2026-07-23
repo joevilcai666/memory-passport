@@ -381,11 +381,16 @@ def test_two_edits_preserve_the_complete_supersedes_chain(crud_seed, app_client)
     [
         (MemoryStatus.CANDIDATE, MemoryStatus.ACTIVE),
         (MemoryStatus.CANDIDATE, MemoryStatus.NEEDS_REVIEW),
+        (MemoryStatus.CANDIDATE, MemoryStatus.DELETED),
         (MemoryStatus.ACTIVE, MemoryStatus.ARCHIVED),
         (MemoryStatus.ACTIVE, MemoryStatus.NEEDS_REVIEW),
         (MemoryStatus.ACTIVE, MemoryStatus.DELETED),
         (MemoryStatus.ACTIVE, MemoryStatus.EXPIRED),
         (MemoryStatus.ACTIVE, MemoryStatus.FLAGGED_WRONG),
+        (MemoryStatus.ARCHIVED, MemoryStatus.DELETED),
+        (MemoryStatus.NEEDS_REVIEW, MemoryStatus.DELETED),
+        (MemoryStatus.EXPIRED, MemoryStatus.DELETED),
+        (MemoryStatus.FLAGGED_WRONG, MemoryStatus.DELETED),
     ],
 )
 def test_every_legal_status_transition(crud_seed, app_client, initial, target):
@@ -412,11 +417,16 @@ def test_every_legal_status_transition(crud_seed, app_client, initial, target):
 _LEGAL_TRANSITIONS = {
     (MemoryStatus.CANDIDATE, MemoryStatus.ACTIVE),
     (MemoryStatus.CANDIDATE, MemoryStatus.NEEDS_REVIEW),
+    (MemoryStatus.CANDIDATE, MemoryStatus.DELETED),
     (MemoryStatus.ACTIVE, MemoryStatus.ARCHIVED),
     (MemoryStatus.ACTIVE, MemoryStatus.NEEDS_REVIEW),
     (MemoryStatus.ACTIVE, MemoryStatus.DELETED),
     (MemoryStatus.ACTIVE, MemoryStatus.EXPIRED),
     (MemoryStatus.ACTIVE, MemoryStatus.FLAGGED_WRONG),
+    (MemoryStatus.ARCHIVED, MemoryStatus.DELETED),
+    (MemoryStatus.NEEDS_REVIEW, MemoryStatus.DELETED),
+    (MemoryStatus.EXPIRED, MemoryStatus.DELETED),
+    (MemoryStatus.FLAGGED_WRONG, MemoryStatus.DELETED),
 }
 
 

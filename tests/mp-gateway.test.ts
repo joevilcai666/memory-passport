@@ -1,6 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment node
+
+// @vitest-environment node
+// The gateway forwards real Request/Response objects with an AbortSignal timeout.
+// jsdom's Request rejects Node's AbortSignal, so this file must run under node.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+
+beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "test");
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -69,10 +78,12 @@ describe("same-origin Memory Passport gateway", () => {
       },
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(returnedMemory);
-    expect(response.headers.get("authorization")).toBeNull();
     expect(upstream).toHaveBeenCalledOnce();
+    expect({ status: response.status, body: await response.json() }).toEqual({
+      status: 200,
+      body: returnedMemory,
+    });
+    expect(response.headers.get("authorization")).toBeNull();
   });
 
   it("forwards an allowed product read with its query string", async () => {

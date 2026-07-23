@@ -3,6 +3,8 @@
 Memory Passport uses the same `HmsClient` paths in demo and real modes. The
 real overlay replaces the deterministic `hms-api` service with the pinned HMS
 submodule image and adds its worker; MP's domain behavior does not change.
+Both modes are selected from the public `main` branch. `vendor/hms` is the
+pinned source of truth for real mode; there is no separate HMS release branch.
 
 ## Prerequisites
 
