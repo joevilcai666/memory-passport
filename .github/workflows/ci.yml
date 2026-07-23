@@ -2,9 +2,9 @@
 #
 # What this runs (unit-only, fast):
 #   1. Unix script portability validation
-#   2. pnpm install (frozen lockfile)
-#   3. pnpm lint
-#   4. pnpm build
+#   2. Restore failure-path tests
+#   3. pnpm install + Vitest
+#   4. pnpm lint + build
 #   5. ruff check app tests
 #   6. pytest -m 'not postgres and not hms and not compose'
 #
@@ -41,6 +41,9 @@ jobs:
       - name: Validate Unix script portability
         run: python3 scripts/check_line_endings.py
 
+      - name: Test backup and restore reliability
+        run: make test-backup test-restore
+
       # ---- Frontend (Next.js 16 + React 19) --------------------------------
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -56,6 +59,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Test frontend and gateway
+        run: pnpm test
 
       - name: Frontend lint
         run: pnpm lint

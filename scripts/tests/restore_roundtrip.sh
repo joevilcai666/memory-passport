@@ -79,6 +79,17 @@ if [[ -z "$hms_unit_id" || ! "$hms_unit_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   exit 1
 fi
 
+migration_row="$("${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
+  psql -U postgres -d memory_passport -At -v ON_ERROR_STOP=1 \
+  -c "SELECT id || '|' || status::text FROM migrations ORDER BY id LIMIT 1;")"
+migration_id="${migration_row%%|*}"
+migration_status="${migration_row#*|}"
+if [[ ! "$migration_id" =~ ^[a-zA-Z0-9_-]+$ ]] ||
+   [[ ! "$migration_status" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "Seeded business migration was not found" >&2
+  exit 1
+fi
+
 echo "==> backing up sentinel state"
 ./scripts/backup.sh
 snapshot="$(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
@@ -92,7 +103,8 @@ echo "==> mutating MP and HMS after backup"
   psql -U postgres -d memory_passport -v ON_ERROR_STOP=1 \
   -c "UPDATE memory_records SET content = 'MUTATED AFTER BACKUP' WHERE id = '$memory_id';" \
   -c "DELETE FROM memory_record_hms_units WHERE mp_memory_id = '$memory_id';" \
-  -c "DELETE FROM audit_logs WHERE target = '$memory_id';"
+  -c "DELETE FROM audit_logs WHERE target = '$memory_id';" \
+  -c "DELETE FROM migrations WHERE id = '$migration_id';"
 "${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
   psql -U postgres -d hms -v ON_ERROR_STOP=1 \
   -c "UPDATE demo_hms_memory_units SET text = 'MUTATED AFTER BACKUP' WHERE id = '$hms_unit_id';"
@@ -113,6 +125,7 @@ restored_content="$("${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
   -c "SELECT 1/CASE WHEN (SELECT count(*) FROM memory_record_hms_units WHERE mp_memory_id = '$memory_id') = 1 THEN 1 ELSE 0 END;" \
   -c "SELECT 1/CASE WHEN (SELECT version_num FROM alembic_version) = '0009_tenant_hms_credentials' THEN 1 ELSE 0 END;" \
   -c "SELECT 1/CASE WHEN (SELECT count(*) FROM audit_logs WHERE target = '$memory_id') >= 1 THEN 1 ELSE 0 END;" \
+  -c "SELECT 1/CASE WHEN (SELECT status::text FROM migrations WHERE id = '$migration_id') = '$migration_status' THEN 1 ELSE 0 END;" \
   >/dev/null
 "${COMPOSE[@]}" -p "$PROJECT" exec -T postgres \
   psql -U postgres -d hms -At -v ON_ERROR_STOP=1 \

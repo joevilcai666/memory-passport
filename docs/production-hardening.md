@@ -132,25 +132,34 @@ make restore STAMP=20260721T020000Z      # destructive; asks for confirmation
 ```
 
 Both run `pg_dump`/`pg_restore` inside the `postgres` container, so no local
-psql install is required. Restore is an exclusive maintenance operation:
+psql install is required. Backup and restore use exclusive maintenance windows:
 
-1. It parses both archives before making changes and asks the operator to type
-   the MP database name.
-2. It discovers and stops the configured `mp-backend`, `hms-api`, and (in real
+1. Backup stops the configured MP/HMS writers before either dump and restarts
+   them after both archives are complete, preventing MP mappings and HMS units
+   from being captured at different logical times. New backups include
+   `row-counts.tsv`, derived directly from each archive's COPY stream.
+2. Restore parses both archives before making changes, requires the manifest,
+   asks the operator to type the MP database name, and compares every restored
+   table with that exact archive snapshot.
+3. It discovers and stops the configured `mp-backend`, `hms-api`, and (in real
    mode) `hms-worker` services before dropping a database. Service-role
    connections stay revoked throughout the destructive window.
-3. It recreates each database with its least-privilege service owner, creates
+4. It recreates each database with its least-privilege service owner, creates
    `vector` as the privileged Postgres backup role, and replays the archive as
    that role with `--exit-on-error --single-transaction`. The archive's
    original object owners are restored; `mp`/`hms` never need extension-create
    privilege and must remain non-superusers.
-4. It verifies the `vector` version/owner, MP Alembic head, required MP and HMS
+5. It verifies the `vector` version/owner, MP Alembic head, required MP and HMS
    tables/indexes, representative row counts, database/relation ownership, and
    service-role access. Only then does it grant service-role `CONNECT`, restart
    the configured applications, and require `GET /v1/health` to succeed.
 
 Any archive, extension, schema, ownership, data-query, startup, or health error
 exits non-zero and never prints `restore complete`.
+
+Backups created before the row-count manifest was introduced are intentionally
+rejected because their data completeness cannot be proven. Create a fresh
+backup with the current `scripts/backup.sh` before relying on this restore path.
 
 **Interrupted/failed restore recovery.** The failure trap stops application
 writers again and revokes `CONNECT` from both service roles. Leave that lock in

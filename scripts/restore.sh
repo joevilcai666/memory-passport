@@ -66,7 +66,7 @@ if [ -z "${EXPECTED_ALEMBIC_REVISION:-}" ]; then
   EXPECTED_ALEMBIC_REVISION="$(sed -nE \
     's/^revision(:[^=]+)?= *"([^"]+)".*/\2/p' "$ALEMBIC_HEAD_FILE")"
 fi
-if [ -z "$EXPECTED_ALEMBIC_REVISION" ]; then
+if [[ ! "$EXPECTED_ALEMBIC_REVISION" =~ ^[a-zA-Z0-9_]+$ ]]; then
   echo "✗ could not determine the expected Alembic revision" >&2
   exit 1
 fi
@@ -89,6 +89,49 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
     exit 1
   fi
 done
+
+MANIFEST="$SRC/row-counts.tsv"
+if [ ! -s "$MANIFEST" ]; then
+  echo "✗ missing $MANIFEST — backup has no verifiable data manifest" >&2
+  exit 1
+fi
+
+MP_COUNT_ASSERTIONS=""
+HMS_COUNT_ASSERTIONS=""
+MP_MANIFEST_ROWS=0
+HMS_MANIFEST_ROWS=0
+while IFS=$'\t' read -r manifest_db relation expected_rows extra; do
+  if [ -n "${extra:-}" ] ||
+     [[ ! "$relation" =~ ^[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*$ ]] ||
+     [[ ! "$expected_rows" =~ ^[0-9]+$ ]]; then
+    echo "✗ invalid row-count manifest entry: $manifest_db $relation $expected_rows" >&2
+    exit 1
+  fi
+  schema="${relation%%.*}"
+  table="${relation#*.}"
+  assertion="
+    IF (SELECT count(*) FROM \"$schema\".\"$table\") <> $expected_rows THEN
+      RAISE EXCEPTION 'row count mismatch for $relation: expected $expected_rows';
+    END IF;"
+  case "$manifest_db" in
+    "$MP_DB_NAME")
+      MP_COUNT_ASSERTIONS+="$assertion"
+      MP_MANIFEST_ROWS=$((MP_MANIFEST_ROWS + 1))
+      ;;
+    "$HMS_DB_NAME")
+      HMS_COUNT_ASSERTIONS+="$assertion"
+      HMS_MANIFEST_ROWS=$((HMS_MANIFEST_ROWS + 1))
+      ;;
+    *)
+      echo "✗ row-count manifest names unexpected database: $manifest_db" >&2
+      exit 1
+      ;;
+  esac
+done < "$MANIFEST"
+if [ "$MP_MANIFEST_ROWS" -eq 0 ] || [ "$HMS_MANIFEST_ROWS" -eq 0 ]; then
+  echo "✗ row-count manifest must cover both restored databases" >&2
+  exit 1
+fi
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
@@ -211,6 +254,18 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
     --exit-on-error --single-transaction \
     < "$SRC/$db.dump"
   echo "    ✓ $db restored"
+done
+
+echo "  → comparing every restored table with the archive row-count manifest ..."
+for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
+  case "$db" in
+    "$MP_DB_NAME") count_assertions="$MP_COUNT_ASSERTIONS" ;;
+    "$HMS_DB_NAME") count_assertions="$HMS_COUNT_ASSERTIONS" ;;
+  esac
+  COUNT_VERIFY_SQL="DO \$verify\$ BEGIN $count_assertions END \$verify\$;"
+  "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+    psql -U "$POSTGRES_USER" -d "$db" -v ON_ERROR_STOP=1 \
+    -c "$COUNT_VERIFY_SQL"
 done
 
 echo "  → verifying Memory Passport schema, data, and ownership ..."

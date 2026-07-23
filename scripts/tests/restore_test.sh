@@ -32,16 +32,58 @@ assert_before() {
 
 run_restore() {
   local fixture="$1"
+  local manifest_count="${2:-0}"
   local fake_bin="$fixture/bin"
   local backup="$fixture/backup"
 
   mkdir -p "$fake_bin" "$backup"
   printf 'mp dump\n' > "$backup/memory_passport.dump"
   printf 'hms dump\n' > "$backup/hms.dump"
+  printf 'memory_passport\tpublic.memory_records\t%s\n' "$manifest_count" > "$backup/row-counts.tsv"
+  printf 'hms\tpublic.demo_hms_memory_units\t0\n' >> "$backup/row-counts.tsv"
 
   TEST_LOG="$fixture/commands.log" \
     PATH="$fake_bin:/usr/bin:/bin" \
     "$RESTORE" "$backup" <<<"memory_passport" 2>&1
+}
+
+test_row_count_mismatch_fails_closed() {
+  local fixture output status
+  fixture="$(mktemp -d "${TMPDIR:-/tmp}/mp-restore-test.XXXXXX")"
+  trap 'rm -rf "$fixture"' RETURN
+  mkdir -p "$fixture/bin"
+
+  cat > "$fixture/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  cat > "$fixture/bin/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$TEST_LOG"
+case "$1 $2" in
+  "ps postgres") echo "postgres Up healthy" ;;
+  "config --services") printf 'postgres\nhms-api\nmp-backend\n' ;;
+esac
+case " $* " in
+  *"row count mismatch for public.memory_records: expected 999"*) exit 44 ;;
+esac
+exit 0
+EOF
+  chmod +x "$fixture/bin/docker" "$fixture/bin/docker-compose"
+
+  set +e
+  output="$(run_restore "$fixture" 999)"
+  status=$?
+  set -e
+
+  [ "$status" -ne 0 ] || fail "row-count mismatch must make restore exit non-zero"
+  assert_not_contains "$output" "restore complete" \
+    "row-count mismatch must not print restore completion"
+  [[ "$output" == *"application writers remain stopped"* ]] || \
+    fail "row-count mismatch must leave the restore window locked"
+  echo "ok - row-count mismatch fails closed"
+  TESTS_RUN=$((TESTS_RUN + 1))
 }
 
 test_pg_restore_failure_fails_closed() {
@@ -290,6 +332,7 @@ EOF
 test_pg_restore_failure_fails_closed
 test_extension_failure_fails_closed_with_recovery_instructions
 test_corrupt_archive_is_rejected_before_database_drop
+test_row_count_mismatch_fails_closed
 test_application_services_stop_before_destructive_sql
 test_extension_is_created_privileged_before_archive_restore
 test_completion_is_gated_on_database_and_health_verification

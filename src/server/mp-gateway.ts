@@ -29,6 +29,12 @@ function errorResponse(status: number, code: string, message: string) {
 function serverConfig() {
   const baseUrl = process.env.MP_API_URL;
   const apiKey = process.env.MP_API_KEY;
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.MP_GATEWAY_ALLOW_UNAUTHENTICATED !== "true"
+  ) {
+    throw new Error("Unauthenticated MP gateway is disabled in production");
+  }
   if (!baseUrl || !apiKey) {
     throw new Error("Memory Passport server configuration is incomplete");
   }

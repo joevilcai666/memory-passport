@@ -54,7 +54,7 @@ python3 --version
 在一个新的目录中执行：
 
 ```bash
-git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 make demo
 ```

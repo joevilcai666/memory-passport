@@ -11,12 +11,12 @@ paths and response contract as real HMS.
 - Node.js 22+ and pnpm 10+ for frontend verification
 - `curl` and Python 3 for the executable demo
 
-Windows evaluators should use WSL2 for the full `make demo` workflow. The
-supported native PowerShell Compose path and its role/database verification are
-documented in [`windows.md`](windows.md).
+Windows evaluators should use WSL2 for the full `make demo` workflow. The native
+PowerShell Compose path and its role/database verification are documented in
+[`windows.md`](windows.md), pending real-Windows acceptance before sign-off.
 
 ```bash
-git clone --branch HMS --recursive https://github.com/joevilcai666/memory-passport.git
+git clone --recursive https://github.com/joevilcai666/memory-passport.git
 cd memory-passport
 git submodule update --init --recursive
 cp .env.example .env   # optional in demo mode

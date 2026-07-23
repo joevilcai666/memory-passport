@@ -137,6 +137,7 @@ const next = spawn(
       ...process.env,
       MP_API_URL: `http://127.0.0.1:${upstreamAddress.port}`,
       MP_API_KEY: tenantKey,
+      MP_GATEWAY_ALLOW_UNAUTHENTICATED: "true",
     },
     stdio: ["ignore", "pipe", "pipe"],
   },

@@ -40,8 +40,9 @@
 
 缺 pnpm 时：`npm install -g pnpm`
 
-Windows 上完整的 `make demo` 流程支持 WSL2；原生 PowerShell 的 Compose
-等价命令和可执行位说明见 [`docs/windows.md`](docs/windows.md)。
+Windows 上推荐用 WSL2 跑完整的 `make demo`；原生 PowerShell 的 Compose
+等价命令见 [`docs/windows.md`](docs/windows.md)。两条路径在客户签核前仍需
+真实 Windows 环境验收。
 
 ---
 

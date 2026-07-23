@@ -60,6 +60,8 @@ fi
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_DIR/$STAMP"
 mkdir -p "$DEST"
+MANIFEST="$DEST/row-counts.tsv"
+: > "$MANIFEST"
 echo "==> backing up to $DEST"
 
 # Sanity-check the postgres container is up — we dump through it.
@@ -67,6 +69,38 @@ if ! "${COMPOSE[@]}" ps postgres | grep -q "Up\|healthy"; then
   echo "✗ postgres container is not running. Start the stack first: make up" >&2
   exit 1
 fi
+
+# MP mappings and HMS units form one logical dataset even though they live in
+# separate databases. Stop every configured writer so the two serial pg_dump
+# snapshots cannot straddle a cross-service mutation.
+APP_SERVICES=()
+while IFS= read -r service; do
+  case "$service" in
+    mp-backend|hms-api|hms-worker) APP_SERVICES+=("$service") ;;
+  esac
+done < <("${COMPOSE[@]}" config --services)
+if [ "${#APP_SERVICES[@]}" -eq 0 ]; then
+  echo "✗ no application services found in the Compose configuration" >&2
+  exit 1
+fi
+
+BACKUP_WINDOW_OPEN=0
+restart_after_backup() {
+  local status=$?
+  trap - EXIT
+  if [ "$BACKUP_WINDOW_OPEN" -eq 1 ]; then
+    if ! "${COMPOSE[@]}" up -d --wait "${APP_SERVICES[@]}"; then
+      echo "✗ backup finished but application services did not recover" >&2
+      status=1
+    fi
+  fi
+  exit "$status"
+}
+trap restart_after_backup EXIT
+
+echo "  → stopping application writers for a consistent MP + HMS snapshot ..."
+BACKUP_WINDOW_OPEN=1
+"${COMPOSE[@]}" stop "${APP_SERVICES[@]}"
 
 for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
   echo "  → dumping $db ..."
@@ -78,8 +112,35 @@ for db in "$MP_DB_NAME" "$HMS_DB_NAME"; do
     echo "✗ $db dump is empty — aborting (did the DB exist?)" >&2
     exit 2
   fi
+  # Derive row counts from the archive itself, not from a later live query.
+  # This keeps the manifest on the exact pg_dump snapshot even while the
+  # application remains online. COPY escapes embedded newlines, so each data
+  # row occupies exactly one output line.
+  "${COMPOSE[@]}" exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+    pg_restore -U "$POSTGRES_USER" --data-only --file=- \
+    < "$DEST/$db.dump" | \
+    awk -v database="$db" '
+      BEGIN { OFS = "\t" }
+      /^COPY / { relation = $2; rows = 0; copying = 1; next }
+      copying && $0 == "\\." {
+        print database, relation, rows
+        copying = 0
+        next
+      }
+      copying { rows++ }
+    ' >> "$MANIFEST"
+  if ! grep -q "^${db}$(printf '\t')" "$MANIFEST"; then
+    echo "✗ could not derive row counts from $db.dump" >&2
+    exit 2
+  fi
   echo "    ✓ $(du -h "$DEST/$db.dump" | cut -f1)"
 done
+
+LC_ALL=C sort -o "$MANIFEST" "$MANIFEST"
+
+"${COMPOSE[@]}" up -d --wait "${APP_SERVICES[@]}"
+BACKUP_WINDOW_OPEN=0
+trap - EXIT
 
 echo "✓ backup complete: $DEST"
 echo "  restore with: scripts/restore.sh $STAMP"

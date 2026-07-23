@@ -9,6 +9,23 @@ afterEach(() => {
 });
 
 describe("same-origin Memory Passport gateway", () => {
+  it("fails closed in production without an explicit trusted-network override", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("MP_API_URL", "http://memory-passport.internal:8000");
+    vi.stubEnv("MP_API_KEY", "mp_server_only_test_secret");
+    const upstream = vi.fn();
+    vi.stubGlobal("fetch", upstream);
+
+    const { GET } = await import("@/app/api/mp/[...path]/route");
+    const response = await GET(
+      new Request("http://product.test/api/mp/v1/memories?page_size=100"),
+      { params: Promise.resolve({ path: ["v1", "memories"] }) },
+    );
+
+    expect(response.status).toBe(503);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it("returns the authoritative memory while keeping the tenant credential server-side", async () => {
     vi.stubEnv("MP_API_URL", "http://memory-passport.internal:8000");
     vi.stubEnv("MP_API_KEY", "mp_server_only_test_secret");

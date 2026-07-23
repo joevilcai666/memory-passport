@@ -52,7 +52,7 @@ make demo
 | #10 | Explicit cross-tenant 403 | `test_data_operations_explicitly_forbid_cross_tenant_users` |
 | #36 Restore | Corrupt archive and unexpected `pg_restore` failure exit non-zero without completion | `make test-restore`: `corrupt archive is rejected before database drop`, `pg_restore failure fails closed` |
 | #36 | Exclusive writer stop, privileged vector creation, atomic archive replay | `make test-restore`: service-order and privileged-extension command tests |
-| #36 | Extension/Alembic/tables/indexes/counts/ownership/access/health gate | `make test-restore`: `completion is gated on database and health verification` |
+| #36 | Extension/Alembic/tables/indexes/archive-exact row counts/ownership/access/health gate | `make test-restore`: completion gate plus `row-count mismatch fails closed` |
 | #36 | Extension failure is actionable and leaves writers stopped/connections locked | `make test-restore`: `extension failure fails closed with recovery instructions` |
 | #36 | Backup → mutate → restore proves MP text/mapping/retrieval/migration/audit plus HMS data | `make test-restore-roundtrip` (unique disposable Compose project; opt-in integration gate) |
 

@@ -10,14 +10,17 @@ cd memory-passport
 make demo
 ```
 
-This is the fully supported Windows path for `make`, the executable demo, and
-the Bash examples in the evaluation guides. Docker Desktop must have WSL
-integration enabled for the chosen distribution.
+This is the recommended Windows path for `make`, the executable demo, and the
+Bash examples in the evaluation guides. Docker Desktop must have WSL
+integration enabled for the chosen distribution. The repository mechanically
+verifies LF checkout behavior with `core.autocrlf=true`; customer sign-off still
+requires these commands to pass on a real Windows/WSL2 host.
 
 ## Native PowerShell
 
-Native PowerShell is supported for bringing up and verifying the default
-Compose stack. It does not run `make demo` or `scripts/demo.sh`, which are
+Native PowerShell has an equivalent documented path for bringing up and
+verifying the default Compose stack, but still requires real-Windows acceptance
+before release. It does not run `make demo` or `scripts/demo.sh`, which are
 POSIX-shell interfaces. Make, WSL, Python, and a host Bash installation are not
 required for this Compose-only path:
 

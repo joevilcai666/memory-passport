@@ -1,6 +1,6 @@
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; else echo "docker-compose"; fi)
 
-.PHONY: help build demo up down clean seed check real-config real-up real-down tls-up tls-down backup restore test-restore test-restore-roundtrip
+.PHONY: help build demo up down clean seed check real-config real-up real-down tls-up tls-down backup restore test-backup test-restore test-restore-roundtrip
 
 help: ## Show local evaluator commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -28,6 +28,8 @@ seed: ## Idempotently load the Luna evaluator dataset
 
 check: ## Run frontend, backend, and running-stack checks locally
 	python3 scripts/check_line_endings.py
+	$(MAKE) test-backup test-restore
+	pnpm test
 	pnpm lint
 	pnpm build
 	cd backend && .venv/bin/ruff check app tests
@@ -35,7 +37,7 @@ check: ## Run frontend, backend, and running-stack checks locally
 	$(COMPOSE) up -d --wait --remove-orphans
 	$(COMPOSE) exec -T mp-backend pytest -q
 	@echo ""
-	@echo "Note: portability, lint/build, ruff, and unit pytest also run in GitHub Actions"
+	@echo "Note: portability, restore/frontend tests, lint/build, ruff, and unit pytest also run in GitHub Actions"
 	@echo "      (.github/workflows/ci.yml). The compose integration above"
 	@echo "      stays local — it needs a running stack. See issue #15."
 
@@ -61,6 +63,9 @@ backup: ## Dump both databases to ./backups/<timestamp>/ (see scripts/backup.sh)
 restore: ## Restore a backup snapshot — USAGE: make restore STAMP=<timestamp>  (or STAMP=./path)
 	@if [ -z "$(STAMP)" ]; then echo "Usage: make restore STAMP=20260721T020000Z" >&2; exit 1; fi
 	./scripts/restore.sh "$(STAMP)"
+
+test-backup: ## Run non-destructive backup consistency tests
+	./scripts/tests/backup_test.sh
 
 test-restore: ## Run non-destructive restore command/failure-path tests
 	./scripts/tests/restore_test.sh
